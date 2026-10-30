@@ -4,9 +4,9 @@
 
 # Compiled Go Binaries & Build Output
 bin/
-vpsd
-vpsctl
-vps-mcp
+/vpsd
+/vpsctl
+/vps-mcp
 *.exe
 *.exe~
 *.dll

@@ -34,7 +34,17 @@ else
     exit 1
 fi
 
-echo -e "${GREEN}[1/8] Updating package index...${NC}"
+# Determine source directory (or clone if piped via curl | bash)
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." 2>/dev/null && pwd || echo "")"
+if [ -z "$SRC_DIR" ] || [ ! -d "$SRC_DIR/daemon/cmd/vpsd" ]; then
+    echo -e "${GREEN}Cloning panel-cli repository...${NC}"
+    apt-get update -y && apt-get install -y git
+    rm -rf /tmp/panel-cli
+    git clone https://github.com/kodepreneur/panel-cli.git /tmp/panel-cli
+    SRC_DIR="/tmp/panel-cli"
+fi
+
+echo -e "${GREEN}[1/8] Updating package index and installing tools...${NC}"
 apt-get update -y
 apt-get install -y curl wget git unzip software-properties-common ufw certbot python3-certbot-nginx
 
@@ -64,8 +74,8 @@ if ! command -v go &> /dev/null; then
     export PATH=$PATH:/usr/local/go/bin
 fi
 
-# Build binaries
-cd "$(dirname "$0")/.."
+# Build binaries from source
+cd "$SRC_DIR"
 go build -o /usr/local/bin/vpsd ./daemon/cmd/vpsd
 go build -o /usr/local/bin/vpsctl ./cli/cmd/vpsctl
 go build -o /usr/local/bin/vps-mcp ./mcp/cmd/vps-mcp
@@ -78,7 +88,7 @@ echo -e "${GREEN}[5/8] Setting up systemd services...${NC}"
 cat <<EOF > /etc/systemd/system/vpsd.service
 [Unit]
 Description=VPS Panel Privileged Execution Host Daemon
-After=network.target
+After=network.target nginx.service
 
 [Service]
 Type=simple
@@ -103,7 +113,12 @@ ufw allow 443/tcp
 ufw --force enable
 
 echo -e "${GREEN}[7/8] Deploying Control Plane Backend...${NC}"
-cp -r backend/* /var/www/vps-panel/panel/
+mkdir -p /var/www/vps-panel/panel
+cp -r "$SRC_DIR/backend/"* /var/www/vps-panel/panel/
+if [ -f "$SRC_DIR/backend/.env.example" ] && [ ! -f /var/www/vps-panel/panel/.env ]; then
+    cp "$SRC_DIR/backend/.env.example" /var/www/vps-panel/panel/.env
+fi
+
 cd /var/www/vps-panel/panel
 
 # Install composer if missing
@@ -112,13 +127,14 @@ if ! command -v composer &> /dev/null; then
 fi
 
 composer install --no-dev --optimize-autoloader --no-interaction
+php artisan key:generate --force || true
 php artisan migrate --force
 php artisan db:seed --force
 chown -R www-data:www-data /var/www/vps-panel/panel
 chmod -R 0775 /var/www/vps-panel/panel/storage /var/www/vps-panel/panel/bootstrap/cache
 
 echo -e "${GREEN}[8/8] Building & linking Web Dashboard Frontend...${NC}"
-cd ../../../frontend
+cd "$SRC_DIR/frontend"
 if ! command -v node &> /dev/null; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs
@@ -128,6 +144,14 @@ npm run build
 mkdir -p /var/www/vps-panel/public
 cp -r dist/* /var/www/vps-panel/public/
 
+# Configure Nginx for Panel
+if [ -f "$SRC_DIR/scripts/nginx/vps-panel.conf" ]; then
+    cp "$SRC_DIR/scripts/nginx/vps-panel.conf" /etc/nginx/sites-available/vps-panel.conf
+    rm -f /etc/nginx/sites-enabled/default
+    ln -sf /etc/nginx/sites-available/vps-panel.conf /etc/nginx/sites-enabled/vps-panel.conf
+    systemctl reload nginx || systemctl restart nginx
+fi
+
 echo -e "${BLUE}======================================================${NC}"
 echo -e "${GREEN}    Installation Complete!                            ${NC}"
 echo -e "${BLUE}======================================================${NC}"
@@ -136,4 +160,3 @@ echo -e "CLI Command:    vpsctl server status"
 echo -e "Default Admin:  admin@vpspanel.local / AdminPass123!"
 echo -e "MCP Server:     /usr/local/bin/vps-mcp"
 echo -e "${BLUE}======================================================${NC}"
-
