@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Server, ShieldCheck, Terminal as TerminalIcon } from 'lucide-react';
+import { RefreshCw, Server, ShieldCheck, Terminal as TerminalIcon, GitPullRequest } from 'lucide-react';
 import { ServerOverview } from '../types';
 
 interface HeaderProps {
@@ -7,6 +7,7 @@ interface HeaderProps {
   onRefresh: () => void;
   isRefreshing: boolean;
   onOpenCLIHint: () => void;
+  onOpenSystemUpdate?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -14,6 +15,7 @@ export const Header: React.FC<HeaderProps> = ({
   onRefresh,
   isRefreshing,
   onOpenCLIHint,
+  onOpenSystemUpdate,
 }) => {
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between">
@@ -34,6 +36,17 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-3">
+        {onOpenSystemUpdate && (
+          <button
+            onClick={onOpenSystemUpdate}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors shadow-sm"
+            title="Check for panel updates or update from repository"
+          >
+            <GitPullRequest className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Update Panel</span>
+          </button>
+        )}
+
         <button
           onClick={onOpenCLIHint}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-medium rounded border border-slate-200 text-slate-700 bg-slate-50 hover:bg-slate-100 transition-colors"
@@ -59,4 +72,5 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+
 

@@ -652,6 +652,26 @@ func (s *MCPServer) executeTool(name string, args map[string]interface{}) ToolRe
 		}
 		return formatJSONResult([]map[string]interface{}{})
 
+	case "github_pull", "github_clone_repository":
+		slug, _ := args["slug"].(string)
+		if slug == "" {
+			return formatErrorResult(fmt.Errorf("parameter 'slug' is required"))
+		}
+		repo, _ := args["repository"].(string)
+		branch, _ := args["branch"].(string)
+
+		res, err := s.vpsdClient.UpdateFromRepo(protocol.UpdateFromRepoRequest{
+			ProjectSlug: slug,
+			RepoURL:     repo,
+			Branch:      branch,
+			RunBuild:    true,
+		})
+		if err != nil {
+			return formatErrorResult(err)
+		}
+		return formatJSONResult(res)
+
+
 	default:
 		return formatErrorResult(fmt.Errorf("unsupported tool: %s", name))
 	}

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/kodepreneur/vps-panel/pkg/protocol"
 )
 
 func handleGithub(cfg Config, args []string) {
@@ -67,6 +69,34 @@ func handleGithub(cfg Config, args []string) {
 			return
 		}
 		slug := args[1]
+		client := getRPCClient(cfg)
+
+		updateRes, err := client.UpdateFromRepo(protocol.UpdateFromRepoRequest{
+			ProjectSlug: slug,
+			RunBuild:    true,
+		})
+
+		if err == nil {
+			if cfg.JSONOutput {
+				printJSON(map[string]interface{}{
+					"status": "success",
+					"data":   updateRes,
+				})
+				return
+			}
+
+			fmt.Println("=== GITHUB PULL & ATOMIC DEPLOY ===")
+			fmt.Printf("Project:        %s\n", updateRes.ProjectSlug)
+			fmt.Printf("Release Tag:    %s\n", updateRes.ReleaseTag)
+			if updateRes.CommitHash != "" {
+				fmt.Printf("Git Commit:     %s - %s\n", updateRes.CommitHash, updateRes.CommitMessage)
+			}
+			fmt.Printf("Active Symlink: %s\n", updateRes.CurrentSymlink)
+			fmt.Printf("Status:         ACTIVE (Zero-Downtime Deployed)\n")
+			return
+		}
+
+		// Fallback to local git pull in current directory
 		baseDir := "/var/www/vps-panel/projects"
 		if envDir := os.Getenv("VPSD_PROJECTS_DIR"); envDir != "" {
 			baseDir = envDir
@@ -76,17 +106,17 @@ func handleGithub(cfg Config, args []string) {
 
 		projDir := filepath.Join(baseDir, slug, "current")
 
-		if _, err := os.Stat(projDir); os.IsNotExist(err) {
-			printError(cfg, fmt.Errorf("project '%s' current release directory not found at %s", slug, projDir), 1)
+		if _, errStat := os.Stat(projDir); os.IsNotExist(errStat) {
+			printError(cfg, fmt.Errorf("project '%s' current release directory not found at %s: %w", slug, projDir, err), 1)
 			return
 		}
 
 		cmd := exec.Command("git", "-C", projDir, "pull")
-		out, err := cmd.CombinedOutput()
+		out, pullErr := cmd.CombinedOutput()
 		outputStr := string(out)
 
-		if err != nil {
-			printError(cfg, fmt.Errorf("git pull failed: %s (%w)", outputStr, err), 1)
+		if pullErr != nil {
+			printError(cfg, fmt.Errorf("git pull failed: %s (%w)", outputStr, pullErr), 1)
 			return
 		}
 
@@ -102,6 +132,7 @@ func handleGithub(cfg Config, args []string) {
 		}
 
 		fmt.Printf("Git pull succeeded for '%s':\n%s\n", slug, outputStr)
+
 
 	default:
 		printError(cfg, fmt.Errorf("unknown github subcommand: %s", sub), 1)

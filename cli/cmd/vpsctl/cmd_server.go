@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
+
+	"github.com/kodepreneur/vps-panel/pkg/protocol"
 )
 
 func handleServer(cfg Config, args []string) {
@@ -109,6 +112,79 @@ func handleServer(cfg Config, args []string) {
 			}
 			fmt.Printf("%-20s %-12s %s\n", s.Name, stateTag, s.DisplayName)
 		}
+
+	case "update":
+		checkOnly := false
+		branch := ""
+
+		for _, a := range os.Args {
+			if a == "--check" {
+				checkOnly = true
+			}
+			if strings.HasPrefix(a, "--branch=") {
+				branch = strings.TrimPrefix(a, "--branch=")
+			}
+		}
+
+		if checkOnly {
+			status, err := client.GetSystemUpdateStatus()
+			if err != nil {
+				printError(cfg, fmt.Errorf("failed to check update status: %w", err), 1)
+				return
+			}
+
+			if cfg.JSONOutput {
+				printJSON(map[string]interface{}{
+					"status": "success",
+					"data":   status,
+				})
+				return
+			}
+
+			fmt.Println("=== VPS PANEL UPDATE STATUS ===")
+			fmt.Printf("Current Version:  %s\n", status.CurrentVersion)
+			fmt.Printf("Current Commit:   %s\n", status.CurrentCommit)
+			fmt.Printf("Active Branch:    %s\n", status.CurrentBranch)
+			fmt.Printf("Repository URL:   %s\n", status.RemoteURL)
+			if status.UpdateAvailable {
+				fmt.Printf("Update Status:    UPDATE AVAILABLE (%d commits behind origin/%s)\n", status.BehindCount, status.CurrentBranch)
+				fmt.Printf("Latest Commit:    %s (\"%s\")\n", status.LatestCommit, status.LatestMessage)
+				fmt.Println("\nRun 'vpsctl server update' or 'vpsctl update' to apply updates.")
+			} else {
+				fmt.Println("Update Status:    Up to date with remote repository.")
+			}
+			return
+		}
+
+		fmt.Println("Pulling latest panel updates from repository and compiling binaries...")
+		result, err := client.UpdateSystem(protocol.SystemUpdateRequest{Branch: branch})
+		if err != nil {
+			printError(cfg, fmt.Errorf("panel update failed: %w", err), 1)
+			return
+		}
+
+		if cfg.JSONOutput {
+			printJSON(map[string]interface{}{
+				"status": "success",
+				"data":   result,
+			})
+			return
+		}
+
+		fmt.Println("=== VPS PANEL UPDATE COMPLETE ===")
+		fmt.Printf("Previous Commit:  %s\n", result.OldCommit)
+		fmt.Printf("Updated Commit:   %s\n", result.NewCommit)
+		binStatus := "No"
+		if result.BinariesBuilt {
+			binStatus = "Yes (vpsd, vpsctl, vps-mcp recompiled)"
+		}
+		fmt.Printf("Binaries Built:   %s\n", binStatus)
+		fmt.Println("Status:           SUCCESS")
+		if result.Logs != "" {
+			fmt.Println("\n--- Update Execution Logs ---")
+			fmt.Println(strings.TrimSpace(result.Logs))
+		}
+
 
 	default:
 		printError(cfg, fmt.Errorf("unknown server subcommand: %s", sub), 1)

@@ -32,6 +32,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/server/services/{name}/restart', [ServerController::class, 'restartService'])->middleware('agent.auth:service.manage');
         Route::post('/server/reboot', [ServerController::class, 'reboot'])->middleware('agent.auth:server.reboot');
         Route::post('/server/terminal', [ServerController::class, 'terminal'])->middleware('agent.auth:server.read');
+        Route::get('/server/update/status', [ServerController::class, 'updateStatus'])->middleware('agent.auth:server.read');
+        Route::post('/server/update', [ServerController::class, 'updateSystem'])->middleware('agent.auth:server.admin');
 
         // Firewall Management
         Route::get('/server/firewall', [FirewallController::class, 'status'])->middleware('agent.auth:server.read');
@@ -46,6 +48,7 @@ Route::prefix('v1')->group(function () {
 
         // Deployments & Releases
         Route::post('/projects/{id}/deploy', [ProjectController::class, 'deploy'])->middleware('agent.auth:project.deploy');
+        Route::post('/projects/{id}/update-from-repo', [ProjectController::class, 'updateFromRepo'])->middleware('agent.auth:project.deploy');
         Route::post('/projects/{id}/rollback', [ProjectController::class, 'rollback'])->middleware('agent.auth:project.deploy');
         Route::get('/projects/{id}/logs', [ProjectController::class, 'logs'])->middleware('agent.auth:project.read');
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/kodepreneur/vps-panel/daemon/internal/handler"
@@ -69,8 +71,11 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
+	var shuttingDown uint32
+
 	go func() {
 		<-sigChan
+		atomic.StoreUint32(&shuttingDown, 1)
 		log.Println("[vpsd] Shutting down daemon gracefully...")
 		_ = listener.Close()
 		_ = os.Remove(*socketPath)
@@ -82,17 +87,16 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			select {
-			case <-sigChan:
+			if atomic.LoadUint32(&shuttingDown) == 1 || errors.Is(err, net.ErrClosed) {
 				return
-			default:
-				log.Printf("[vpsd] Connection accept error: %v", err)
-				continue
 			}
+			log.Printf("[vpsd] Connection accept error: %v", err)
+			continue
 		}
 
 		go handleConnection(conn, dispatcher)
 	}
+
 }
 
 func handleConnection(conn net.Conn, d *handler.Dispatcher) {

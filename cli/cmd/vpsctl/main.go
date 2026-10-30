@@ -21,16 +21,18 @@ type Config struct {
 func main() {
 	cfg := parseGlobalFlags()
 
-	if len(os.Args) < 2 {
+	nonFlagArgs := filterFlags(os.Args[1:])
+	if len(nonFlagArgs) == 0 {
 		printHelp()
 		os.Exit(0)
 	}
 
-	cmd := os.Args[1]
-	args := filterFlags(os.Args[2:])
+	cmd := nonFlagArgs[0]
+	args := nonFlagArgs[1:]
 
 	// Handle version
-	if cmd == "version" || cmd == "--version" || cmd == "-v" {
+	if cmd == "version" || cmd == "-v" {
+
 		if cfg.JSONOutput {
 			printJSON(map[string]interface{}{"version": version})
 		} else {
@@ -49,6 +51,8 @@ func main() {
 		handleServer(cfg, args)
 	case "project":
 		handleProject(cfg, args)
+	case "update":
+		handleServer(cfg, append([]string{"update"}, args...))
 	case "ssl":
 		handleSSL(cfg, args)
 	case "service":
@@ -151,15 +155,20 @@ Commands:
     status                 Display overall server health, OS info and uptime
     resources              Display real-time CPU, RAM, Disk, and Load metrics
     services               List tracked system services
+    update [--check]       Check or pull updates for VPS Panel from repository
 
   project
     list                   List all hosted websites and applications
     create <name> <domain> <type>
                            Provision a new project (laravel, nodejs, static, etc.)
+    update <slug>          Update project from its git repository with atomic release
     deploy <slug>          Trigger atomic release deployment
     rollback <slug> [tag]  Roll back project to previous or specified release
     logs <slug>            Display recent project deployment logs
     delete <slug>          Remove a project and its virtual host
+
+  update                   Check or pull updates for VPS Panel from repository
+
 
   ssl
     status <domain>        Check SSL certificate status and expiration

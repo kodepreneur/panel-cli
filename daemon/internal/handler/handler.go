@@ -80,6 +80,24 @@ func (d *Dispatcher) Handle(req protocol.Request) protocol.Response {
 		}
 		resp.Result = success
 
+	case "System.GetUpdateStatus":
+		status, err := d.serviceManager.GetUpdateStatus()
+		if err != nil {
+			resp.Error = &protocol.RPCError{Code: -32000, Message: err.Error()}
+			return resp
+		}
+		resp.Result = status
+
+	case "System.UpdateSystem":
+		var uReq protocol.SystemUpdateRequest
+		_ = unmarshalParams(req.Params, &uReq)
+		result, err := d.serviceManager.UpdateSystem(uReq)
+		if err != nil {
+			resp.Error = &protocol.RPCError{Code: -32000, Message: err.Error()}
+			return resp
+		}
+		resp.Result = result
+
 	// --- Nginx Methods ---
 	case "Nginx.ApplyVhost":
 		var cfg protocol.VhostConfig
@@ -157,6 +175,19 @@ func (d *Dispatcher) Handle(req protocol.Request) protocol.Response {
 			return resp
 		}
 		resp.Result = removed
+
+	case "Deploy.UpdateFromRepo":
+		var uReq protocol.UpdateFromRepoRequest
+		if err := unmarshalParams(req.Params, &uReq); err != nil {
+			resp.Error = &protocol.RPCError{Code: -32602, Message: "invalid params: " + err.Error()}
+			return resp
+		}
+		result, err := d.deployManager.UpdateFromRepo(uReq)
+		if err != nil {
+			resp.Error = &protocol.RPCError{Code: -32000, Message: err.Error()}
+			return resp
+		}
+		resp.Result = result
 
 	// --- SSL Methods ---
 	case "SSL.IssueCertificate":

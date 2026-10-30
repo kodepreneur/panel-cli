@@ -8,6 +8,7 @@ import { AIAgentsView } from './components/views/AIAgentsView';
 import { DeploymentsView } from './components/views/DeploymentsView';
 import { ServicesView } from './components/views/ServicesView';
 import { TerminalView } from './components/views/TerminalView';
+import { GitHubView } from './components/views/GitHubView';
 import {
   ServerOverview,
   ProjectItem,
@@ -15,9 +16,11 @@ import {
   AIAgentItem,
   ApprovalRequestItem,
   DeploymentItem,
+  SystemUpdateStatus,
+  SystemUpdateResult,
 } from './types';
 import { api } from './api/client';
-import { X, Copy, Check, Terminal } from 'lucide-react';
+import { X, Copy, Check, Terminal, GitPullRequest, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavItem>('overview');
@@ -25,7 +28,16 @@ export const App: React.FC = () => {
   const [cliModalOpen, setCliModalOpen] = useState(false);
   const [copiedCLI, setCopiedCLI] = useState(false);
 
+  // System Update Modal State
+  const [systemUpdateModalOpen, setSystemUpdateModalOpen] = useState(false);
+  const [systemUpdateStatus, setSystemUpdateStatus] = useState<SystemUpdateStatus | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isUpdatingSystem, setIsUpdatingSystem] = useState(false);
+  const [systemUpdateResult, setSystemUpdateResult] = useState<SystemUpdateResult | null>(null);
+  const [systemUpdateError, setSystemUpdateError] = useState<string | null>(null);
+
   // Live state fetched directly from control plane backend
+
   const [overview, setOverview] = useState<ServerOverview | undefined>();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -165,6 +177,51 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleUpdateFromRepo = async (
+    id: string,
+    options: { repository_url?: string; branch?: string; run_build: boolean }
+  ) => {
+    const res = await api.updateProjectFromRepo(id, options);
+    await fetchProjectsData();
+    return {
+      logs: res.logs,
+      commit_hash: res.release?.commit_hash,
+      release_tag: res.release?.release_tag,
+    };
+  };
+
+  const handleOpenSystemUpdate = async () => {
+    setSystemUpdateModalOpen(true);
+    setSystemUpdateError(null);
+    setSystemUpdateResult(null);
+    setIsCheckingUpdate(true);
+    try {
+      const status = await api.getSystemUpdateStatus();
+      setSystemUpdateStatus(status);
+    } catch (err: any) {
+      setSystemUpdateError(err.message || 'Failed to check system update status');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleExecuteSystemUpdate = async () => {
+    setIsUpdatingSystem(true);
+    setSystemUpdateError(null);
+    try {
+      const res = await api.updateSystem(systemUpdateStatus?.current_branch || 'main');
+      setSystemUpdateResult(res);
+      // Refresh status after update
+      const status = await api.getSystemUpdateStatus();
+      setSystemUpdateStatus(status);
+      await refreshAll();
+    } catch (err: any) {
+      setSystemUpdateError(err.message || 'Failed to execute system update');
+    } finally {
+      setIsUpdatingSystem(false);
+    }
+  };
+
   const handleRollback = async (id: string) => {
     const proj = projects.find((p) => p.id === id);
     if (!proj) return;
@@ -272,6 +329,7 @@ export const App: React.FC = () => {
           onRefresh={refreshAll}
           isRefreshing={isRefreshing}
           onOpenCLIHint={() => setCliModalOpen(true)}
+          onOpenSystemUpdate={handleOpenSystemUpdate}
         />
 
         <main className="flex-1 overflow-y-auto p-8">
@@ -291,6 +349,7 @@ export const App: React.FC = () => {
               projects={projects}
               onCreateProject={handleCreateProject}
               onDeploy={handleDeploy}
+              onUpdateFromRepo={handleUpdateFromRepo}
               onRollback={handleRollback}
               onDelete={handleDeleteProject}
               onViewLogs={() => setCurrentTab('deployments')}
@@ -300,6 +359,15 @@ export const App: React.FC = () => {
           {currentTab === 'domains' && (
             <DomainsView projects={projects} onInstallSSL={handleInstallSSL} />
           )}
+
+          {currentTab === 'github' && (
+            <GitHubView
+              projects={projects}
+              onUpdateFromRepo={handleUpdateFromRepo}
+              onViewLogs={() => setCurrentTab('deployments')}
+            />
+          )}
+
 
           {currentTab === 'agents' && (
             <AIAgentsView
@@ -328,8 +396,7 @@ export const App: React.FC = () => {
 
           {currentTab === 'terminal' && <TerminalView />}
 
-          {(currentTab === 'github' ||
-            currentTab === 'databases' ||
+          {(currentTab === 'databases' ||
             currentTab === 'backups' ||
             currentTab === 'activity' ||
             currentTab === 'settings') && (
@@ -344,6 +411,161 @@ export const App: React.FC = () => {
           )}
         </main>
       </div>
+
+      {/* System Update Modal */}
+      {systemUpdateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <GitPullRequest className="w-4 h-4 text-emerald-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">VPS Panel System Update</h3>
+                  <p className="text-[11px] text-slate-500">Update control plane and binaries from git repository</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSystemUpdateModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              {systemUpdateError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3.5 py-2.5 rounded text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold">Update check failed</div>
+                    <div className="text-[11px] mt-0.5">{systemUpdateError}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Status details card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                  <span className="text-slate-500 font-medium">Panel Version</span>
+                  <span className="font-mono font-semibold text-slate-800">
+                    v{systemUpdateStatus?.current_version || '1.0.0'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Current Commit</span>
+                  <span className="font-mono bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
+                    {systemUpdateStatus?.current_commit || 'HEAD'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Active Branch</span>
+                  <span className="font-mono text-blue-600 font-medium">
+                    {systemUpdateStatus?.current_branch || 'main'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-slate-500 font-medium">Remote Status</span>
+                  {isCheckingUpdate ? (
+                    <span className="flex items-center gap-1.5 text-slate-500">
+                      <RefreshCw className="w-3 h-3 animate-spin" /> Checking remote...
+                    </span>
+                  ) : systemUpdateStatus?.update_available ? (
+                    <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px] border border-amber-200 font-semibold">
+                      Update Available ({systemUpdateStatus.behind_count} commits)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] border border-emerald-200 font-medium">
+                      <CheckCircle2 className="w-3 h-3" /> Up to Date
+                    </span>
+                  )}
+                </div>
+
+                {systemUpdateStatus?.latest_message && (
+                  <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-600">
+                    <span className="text-slate-400 font-medium">Latest Remote Commit:</span>{' '}
+                    <span className="italic">{systemUpdateStatus.latest_message}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Execution result banner */}
+              {systemUpdateResult && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3.5 py-2.5 rounded text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <div className="font-semibold">Panel Updated Successfully!</div>
+                      <div className="text-[11px] text-emerald-700 font-mono mt-0.5">
+                        Commit: {systemUpdateResult.new_commit}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold border border-emerald-300">
+                    Updated
+                  </span>
+                </div>
+              )}
+
+              {/* Execution logs output */}
+              {systemUpdateResult?.logs && (
+                <div className="mt-2">
+                  <div className="text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1.5">
+                    <Terminal className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Update Execution Logs</span>
+                  </div>
+                  <pre className="bg-slate-950 text-slate-200 font-mono text-[11px] p-3 rounded border border-slate-800 max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap select-text">
+                    {systemUpdateResult.logs}
+                  </pre>
+                </div>
+              )}
+
+              {/* Modal footer */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={handleOpenSystemUpdate}
+                  disabled={isCheckingUpdate || isUpdatingSystem}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium text-xs disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                  <span>Check for Updates</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSystemUpdateModalOpen(false)}
+                    className="px-3.5 py-1.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium text-xs"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExecuteSystemUpdate}
+                    disabled={isUpdatingSystem}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs shadow-sm disabled:opacity-50 transition-colors"
+                  >
+                    {isUpdatingSystem ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Updating System...</span>
+                      </>
+                    ) : (
+                      <>
+                        <GitPullRequest className="w-3.5 h-3.5" />
+                        <span>Update Panel Now</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CLI Hint Modal */}
       {cliModalOpen && (

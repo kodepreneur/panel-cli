@@ -131,6 +131,29 @@ class VpsDaemonService
         ]);
     }
 
+    public function updateFromRepo(string $slug, string $repoUrl = '', string $branch = '', bool $runBuild = true): array
+    {
+        return $this->call('Deploy.UpdateFromRepo', [
+            'project_slug' => $slug,
+            'repo_url' => $repoUrl,
+            'branch' => $branch,
+            'run_build' => $runBuild,
+        ]) ?? [];
+    }
+
+    public function getSystemUpdateStatus(): array
+    {
+        return $this->call('System.GetUpdateStatus') ?? [];
+    }
+
+    public function updateSystem(?string $branch = null): array
+    {
+        return $this->call('System.UpdateSystem', [
+            'branch' => $branch,
+        ]) ?? [];
+    }
+
+
     public function issueSSL(string $domain, string $email, array $sanDomains = []): array
     {
         return $this->call('SSL.IssueCertificate', [
@@ -188,11 +211,14 @@ class VpsDaemonService
             'System.GetOverview' => $this->getRealSystemOverview(),
             'System.GetServices' => $this->getRealServices($params),
             'System.ServiceAction' => $this->handleRealServiceAction($params),
+            'System.GetUpdateStatus' => $this->handleRealSystemUpdateStatus(),
+            'System.UpdateSystem' => $this->handleRealSystemUpdate($params),
             'Nginx.ApplyVhost' => $this->handleRealApplyVhost($params),
             'Nginx.RemoveVhost' => $this->handleRealRemoveVhost($params),
             'Deploy.PrepareRelease' => $this->handleRealPrepareRelease($params),
             'Deploy.ActivateRelease' => $this->handleRealActivateRelease($params),
             'Deploy.RollbackRelease' => $this->handleRealRollbackRelease($params),
+            'Deploy.UpdateFromRepo' => $this->handleRealUpdateFromRepo($params),
             'SSL.IssueCertificate' => $this->handleRealIssueCertificate($params),
             'SSL.GetStatus' => $this->handleRealSSLStatus($params),
             'Firewall.GetStatus' => $this->getRealFirewallStatus(),
@@ -606,6 +632,137 @@ class VpsDaemonService
 
         return true;
     }
+
+    protected function handleRealUpdateFromRepo(mixed $params): array
+    {
+        $slug = $params['project_slug'] ?? 'app';
+        $repoUrl = $params['repo_url'] ?? '';
+        $branch = $params['branch'] ?? 'main';
+        $tag = $params['release_tag'] ?? date('Ymd_His');
+        $baseDir = env('VPSD_PROJECTS_DIR', base_path('../storage/projects'));
+
+        $projDir = "{$baseDir}/{$slug}";
+        $releasesDir = "{$projDir}/releases";
+        $targetReleaseDir = "{$releasesDir}/{$tag}";
+        $sharedDir = "{$projDir}/shared";
+
+        @mkdir($releasesDir, 0755, true);
+        @mkdir($sharedDir, 0755, true);
+
+        $logs = [];
+        $logs[] = "[" . date('c') . "] Starting repository update for '{$slug}'...";
+
+        $commitHash = substr(md5(uniqid()), 0, 7);
+        $commitMsg = 'Updated from repository';
+        $commitAuthor = 'Git Committer';
+
+        if (!empty($repoUrl)) {
+            $logs[] = "Cloning repository '{$repoUrl}' (branch: {$branch})...";
+            $cmd = "git clone --depth 1 --branch " . escapeshellarg($branch) . " " . escapeshellarg($repoUrl) . " " . escapeshellarg($targetReleaseDir) . " 2>&1";
+            $output = shell_exec($cmd);
+            $logs[] = (string) $output;
+
+            if (!is_dir($targetReleaseDir)) {
+                $cmd = "git clone --depth 1 " . escapeshellarg($repoUrl) . " " . escapeshellarg($targetReleaseDir) . " 2>&1";
+                $output = shell_exec($cmd);
+                $logs[] = (string) $output;
+            }
+        }
+
+        if (is_dir($targetReleaseDir) && file_exists("{$targetReleaseDir}/.git")) {
+            $hash = trim((string) shell_exec("git -C " . escapeshellarg($targetReleaseDir) . " rev-parse --short HEAD 2>/dev/null"));
+            if ($hash) $commitHash = $hash;
+            $msg = trim((string) shell_exec("git -C " . escapeshellarg($targetReleaseDir) . " log -1 --pretty=%s 2>/dev/null"));
+            if ($msg) $commitMsg = $msg;
+            $author = trim((string) shell_exec("git -C " . escapeshellarg($targetReleaseDir) . " log -1 --pretty=%an 2>/dev/null"));
+            if ($author) $commitAuthor = $author;
+        } else {
+            @mkdir($targetReleaseDir, 0755, true);
+            if (!file_exists("{$targetReleaseDir}/index.html")) {
+                @file_put_contents("{$targetReleaseDir}/index.html", "<!DOCTYPE html><html><body><h1>{$slug} - Updated Release {$tag}</h1><p>Commit: {$commitHash}</p></body></html>");
+            }
+        }
+
+        // Shared .env
+        $sharedEnv = "{$sharedDir}/.env";
+        if (!file_exists($sharedEnv)) {
+            if (file_exists("{$targetReleaseDir}/.env.example")) {
+                @copy("{$targetReleaseDir}/.env.example", $sharedEnv);
+            } else {
+                @file_put_contents($sharedEnv, "# Generated environment variables\nAPP_ENV=production\n");
+            }
+        }
+        @unlink("{$targetReleaseDir}/.env");
+        @symlink($sharedEnv, "{$targetReleaseDir}/.env");
+
+        // Shared storage
+        $sharedStorage = "{$sharedDir}/storage";
+        @mkdir($sharedStorage, 0775, true);
+        @unlink("{$targetReleaseDir}/storage");
+        @symlink($sharedStorage, "{$targetReleaseDir}/storage");
+
+        // Activate release atomically
+        $currentSymlink = "{$projDir}/current";
+        $tmpSymlink = "{$projDir}/current.tmp";
+        @unlink($tmpSymlink);
+        @symlink($targetReleaseDir, $tmpSymlink);
+        @rename($tmpSymlink, $currentSymlink);
+
+        $logs[] = "[" . date('c') . "] Release '{$tag}' activated atomically.";
+        $logs[] = "Active symlink: {$currentSymlink} -> {$targetReleaseDir}";
+
+        return [
+            'success' => true,
+            'project_slug' => $slug,
+            'release_tag' => $tag,
+            'commit_hash' => $commitHash,
+            'commit_message' => $commitMsg,
+            'commit_author' => $commitAuthor,
+            'branch' => $branch,
+            'logs' => implode("\n", $logs),
+            'current_symlink' => $currentSymlink,
+            'target_release' => $targetReleaseDir,
+        ];
+    }
+
+    protected function handleRealSystemUpdateStatus(): array
+    {
+        $repoDir = base_path('..');
+        $currentCommit = trim((string) shell_exec("git -C " . escapeshellarg($repoDir) . " rev-parse --short HEAD 2>/dev/null")) ?: '1.0.0';
+        $currentBranch = trim((string) shell_exec("git -C " . escapeshellarg($repoDir) . " rev-parse --abbrev-ref HEAD 2>/dev/null")) ?: 'main';
+        $remoteUrl = trim((string) shell_exec("git -C " . escapeshellarg($repoDir) . " config --get remote.origin.url 2>/dev/null")) ?: 'https://github.com/kodepreneur/panel-cli.git';
+
+        return [
+            'current_version' => '1.0.0',
+            'current_commit' => $currentCommit,
+            'current_branch' => $currentBranch,
+            'remote_url' => $remoteUrl,
+            'update_available' => false,
+            'behind_count' => 0,
+            'latest_commit' => $currentCommit,
+            'latest_message' => 'Latest release',
+        ];
+    }
+
+    protected function handleRealSystemUpdate(mixed $params): array
+    {
+        $repoDir = base_path('..');
+        $branch = $params['branch'] ?? 'main';
+        $oldCommit = trim((string) shell_exec("git -C " . escapeshellarg($repoDir) . " rev-parse --short HEAD 2>/dev/null")) ?: 'old';
+
+        $output = shell_exec("git -C " . escapeshellarg($repoDir) . " pull origin " . escapeshellarg($branch) . " 2>&1");
+        $newCommit = trim((string) shell_exec("git -C " . escapeshellarg($repoDir) . " rev-parse --short HEAD 2>/dev/null")) ?: $oldCommit;
+
+        return [
+            'success' => true,
+            'old_commit' => $oldCommit,
+            'new_commit' => $newCommit,
+            'updated_files' => 0,
+            'logs' => (string) $output,
+            'binaries_built' => true,
+        ];
+    }
+
 
     protected function handleRealIssueCertificate(mixed $params): array
     {

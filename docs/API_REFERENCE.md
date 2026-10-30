@@ -32,8 +32,14 @@ All authenticated endpoints require either:
 - `GET /api/v1/projects/{id}`: Get project details and releases.
 - `DELETE /api/v1/projects/{id}`: Delete a project and remove its Nginx configuration.
 - `POST /api/v1/projects/{id}/deploy`: Trigger an atomic release deployment.
+- `POST /api/v1/projects/{id}/update-from-repo`: Pull latest commits from Git repository, run build scripts, and atomically activate a new release.
 - `POST /api/v1/projects/{id}/rollback`: Roll back to the previous release.
 - `GET /api/v1/projects/{id}/logs`: Retrieve recent build output logs.
+
+### Server & System Updates
+- `GET /api/v1/server/update/status`: Check current VPS Panel version, git branch/commit, and remote updates.
+- `POST /api/v1/server/update`: Update VPS Panel control plane and recompile binaries from git repository.
+
 
 ### SSL Management
 - `POST /api/v1/projects/{id}/ssl/install`: Issue Let's Encrypt certificate via Certbot.

@@ -89,6 +89,13 @@ vpsctl project list
 # Create a new project
 vpsctl project create my-app app.example.com laravel
 
+# Update project from Git repository (zero-downtime atomic release)
+vpsctl project update my-app
+
+# Check or update VPS Panel itself from git repository
+vpsctl server update --check
+vpsctl update
+
 # Issue Let's Encrypt SSL
 vpsctl ssl install app.example.com
 

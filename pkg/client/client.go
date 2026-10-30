@@ -175,3 +175,22 @@ func (c *Client) DeleteFirewallRule(ruleNumber int) (bool, error) {
 	err := c.Call("Firewall.DeleteRule", protocol.DeleteFirewallRuleRequest{RuleNumber: ruleNumber}, &success)
 	return success, err
 }
+
+func (c *Client) UpdateFromRepo(req protocol.UpdateFromRepoRequest) (*protocol.UpdateFromRepoResult, error) {
+	var res protocol.UpdateFromRepoResult
+	err := c.Call("Deploy.UpdateFromRepo", req, &res)
+	return &res, err
+}
+
+func (c *Client) GetSystemUpdateStatus() (*protocol.SystemUpdateStatus, error) {
+	var res protocol.SystemUpdateStatus
+	err := c.Call("System.GetUpdateStatus", nil, &res)
+	return &res, err
+}
+
+func (c *Client) UpdateSystem(req protocol.SystemUpdateRequest) (*protocol.SystemUpdateResult, error) {
+	var res protocol.SystemUpdateResult
+	err := c.Call("System.UpdateSystem", req, &res)
+	return &res, err
+}
+

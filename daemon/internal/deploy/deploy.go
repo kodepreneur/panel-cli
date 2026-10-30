@@ -3,8 +3,11 @@ package deploy
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/kodepreneur/vps-panel/pkg/protocol"
 )
@@ -174,3 +177,168 @@ func (m *Manager) CleanupOldReleases(slug string, keepCount int) ([]string, erro
 
 	return removed, nil
 }
+
+// UpdateFromRepo pulls the latest codebase from a git repository into a timestamped release,
+// performs build steps, links shared assets, and atomically activates the release.
+func (m *Manager) UpdateFromRepo(req protocol.UpdateFromRepoRequest) (*protocol.UpdateFromRepoResult, error) {
+	if req.ProjectSlug == "" {
+		return nil, fmt.Errorf("project_slug is required")
+	}
+
+	slug := req.ProjectSlug
+	projDir := m.GetProjectDir(slug)
+	repoURL := req.RepoURL
+	branch := req.Branch
+	if branch == "" {
+		branch = "main"
+	}
+
+	var logBuf strings.Builder
+	logBuf.WriteString(fmt.Sprintf("[%s] Starting project update from repository for '%s'...\n", time.Now().Format(time.RFC3339), slug))
+
+	// Resolve repo URL if not provided
+	if repoURL == "" {
+		currentGit := filepath.Join(projDir, "current", ".git")
+		if _, err := os.Stat(currentGit); err == nil {
+			cmd := exec.Command("git", "-C", filepath.Join(projDir, "current"), "config", "--get", "remote.origin.url")
+			out, err := cmd.Output()
+			if err == nil {
+				repoURL = strings.TrimSpace(string(out))
+			}
+		}
+	}
+	if repoURL == "" {
+		return nil, fmt.Errorf("no repository URL provided or configured for project '%s'", slug)
+	}
+
+	releaseTag := req.ReleaseTag
+	if releaseTag == "" {
+		releaseTag = time.Now().Format("20060102_150405")
+	}
+
+	releasesDir := filepath.Join(projDir, "releases")
+	targetReleaseDir := filepath.Join(releasesDir, releaseTag)
+
+	if err := os.MkdirAll(releasesDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create releases directory: %w", err)
+	}
+	_ = os.RemoveAll(targetReleaseDir)
+
+	logBuf.WriteString(fmt.Sprintf("Cloning repository '%s' (branch: %s)...\n", repoURL, branch))
+
+	// Clone repository with depth 1
+	cloneCmd := exec.Command("git", "clone", "--depth", "1", "--branch", branch, repoURL, targetReleaseDir)
+	cloneOut, err := cloneCmd.CombinedOutput()
+	if err != nil {
+		// Fallback without --branch in case branch is master or default
+		logBuf.WriteString(fmt.Sprintf("Direct branch clone warning: %s. Trying default branch clone...\n", string(cloneOut)))
+		_ = os.RemoveAll(targetReleaseDir)
+		fallbackCmd := exec.Command("git", "clone", "--depth", "1", repoURL, targetReleaseDir)
+		fbOut, fbErr := fallbackCmd.CombinedOutput()
+		if fbErr != nil {
+			return nil, fmt.Errorf("git clone failed: %s (%w)", string(fbOut), fbErr)
+		}
+		logBuf.WriteString(string(fbOut) + "\n")
+	} else {
+		logBuf.WriteString(string(cloneOut) + "\n")
+	}
+
+	// Read commit metadata
+	commitHash := ""
+	if out, err := exec.Command("git", "-C", targetReleaseDir, "rev-parse", "--short", "HEAD").Output(); err == nil {
+		commitHash = strings.TrimSpace(string(out))
+	}
+	commitMsg := ""
+	if out, err := exec.Command("git", "-C", targetReleaseDir, "log", "-1", "--pretty=%s").Output(); err == nil {
+		commitMsg = strings.TrimSpace(string(out))
+	}
+	commitAuthor := ""
+	if out, err := exec.Command("git", "-C", targetReleaseDir, "log", "-1", "--pretty=%an").Output(); err == nil {
+		commitAuthor = strings.TrimSpace(string(out))
+	}
+
+	logBuf.WriteString(fmt.Sprintf("Commit: %s (%s) by %s\n", commitHash, commitMsg, commitAuthor))
+
+	// Ensure shared directory & resources
+	sharedDir := filepath.Join(projDir, "shared")
+	_ = os.MkdirAll(sharedDir, 0755)
+
+	sharedEnv := filepath.Join(sharedDir, ".env")
+	if _, err := os.Stat(sharedEnv); os.IsNotExist(err) {
+		// If cloned repo has .env.example, copy it to shared/.env
+		repoEnvEx := filepath.Join(targetReleaseDir, ".env.example")
+		if exData, err := os.ReadFile(repoEnvEx); err == nil {
+			_ = os.WriteFile(sharedEnv, exData, 0600)
+		} else {
+			_ = os.WriteFile(sharedEnv, []byte("# Generated environment variables\nAPP_ENV=production\n"), 0600)
+		}
+	}
+
+	// Symlink shared .env
+	relEnv := filepath.Join(targetReleaseDir, ".env")
+	_ = os.Remove(relEnv)
+	_ = os.Symlink(sharedEnv, relEnv)
+
+	// Shared storage for PHP / Laravel frameworks
+	sharedStorage := filepath.Join(sharedDir, "storage")
+	_ = os.MkdirAll(sharedStorage, 0775)
+	relStorage := filepath.Join(targetReleaseDir, "storage")
+	_ = os.RemoveAll(relStorage)
+	_ = os.Symlink(sharedStorage, relStorage)
+
+	// Optional build steps
+	if req.RunBuild {
+		// Composer
+		if _, err := os.Stat(filepath.Join(targetReleaseDir, "composer.json")); err == nil {
+			if _, lookErr := exec.LookPath("composer"); lookErr == nil {
+				logBuf.WriteString("Running composer install...\n")
+				compCmd := exec.Command("composer", "install", "--no-dev", "--no-interaction", "--optimize-autoloader")
+				compCmd.Dir = targetReleaseDir
+				compOut, _ := compCmd.CombinedOutput()
+				logBuf.WriteString(string(compOut) + "\n")
+			}
+		}
+
+		// NPM
+		if _, err := os.Stat(filepath.Join(targetReleaseDir, "package.json")); err == nil {
+			if _, lookErr := exec.LookPath("npm"); lookErr == nil {
+				logBuf.WriteString("Running npm install & build...\n")
+				npmCmd := exec.Command("npm", "install", "--no-audit", "--no-fund")
+				npmCmd.Dir = targetReleaseDir
+				npmOut, _ := npmCmd.CombinedOutput()
+				logBuf.WriteString(string(npmOut) + "\n")
+
+				buildCmd := exec.Command("npm", "run", "build")
+				buildCmd.Dir = targetReleaseDir
+				buildOut, _ := buildCmd.CombinedOutput()
+				logBuf.WriteString(string(buildOut) + "\n")
+			}
+		}
+	}
+
+	// Atomically activate release
+	actRes, err := m.ActivateRelease(slug, releaseTag)
+	if err != nil {
+		return nil, fmt.Errorf("failed to activate release '%s': %w", releaseTag, err)
+	}
+
+	// Cleanup old releases
+	_, _ = m.CleanupOldReleases(slug, 5)
+
+	logBuf.WriteString(fmt.Sprintf("[%s] Release '%s' successfully deployed and activated.\nSymlink: %s\n",
+		time.Now().Format(time.RFC3339), releaseTag, actRes.CurrentSymlink))
+
+	return &protocol.UpdateFromRepoResult{
+		Success:        true,
+		ProjectSlug:    slug,
+		ReleaseTag:     releaseTag,
+		CommitHash:     commitHash,
+		CommitMessage:  commitMsg,
+		CommitAuthor:   commitAuthor,
+		Branch:         branch,
+		Logs:           logBuf.String(),
+		CurrentSymlink: actRes.CurrentSymlink,
+		TargetRelease:  targetReleaseDir,
+	}, nil
+}
+

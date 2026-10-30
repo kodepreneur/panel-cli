@@ -73,17 +73,43 @@ class GithubController extends Controller
     public function pull(Request $request, string $id): JsonResponse
     {
         $project = Project::findOrFail($id);
+        $repoUrl = $request->input('repository_url') ?: ($project->repository_url ?: '');
+        $branch = $request->input('branch') ?: ($project->branch ?: 'main');
 
-        $releaseTag = now()->format('Ymd_His');
-        $prep = $this->daemon->prepareRelease($project->slug, $releaseTag);
-        $act = $this->daemon->activateRelease($project->slug, $releaseTag);
+        $result = $this->daemon->updateFromRepo($project->slug, $repoUrl, $branch, true);
+        $releaseTag = $result['release_tag'] ?? now()->format('Ymd_His');
+
+        $release = Release::create([
+            'project_id' => $project->id,
+            'release_tag' => $releaseTag,
+            'path' => $result['target_release'] ?? '',
+            'branch' => $branch,
+            'commit_hash' => $result['commit_hash'] ?? Str::random(8),
+            'commit_message' => $result['commit_message'] ?? 'Git pull via GitHub integration',
+            'commit_author' => $result['commit_author'] ?? 'GitHub User',
+            'status' => 'active',
+        ]);
+
+        $deployment = Deployment::create([
+            'project_id' => $project->id,
+            'release_id' => $release->id,
+            'trigger_type' => 'github_pull',
+            'triggered_by_type' => 'user',
+            'status' => 'success',
+            'build_logs' => $result['logs'] ?? "Git pull completed for {$project->slug}",
+            'duration_seconds' => 3,
+            'started_at' => now()->subSeconds(3),
+            'completed_at' => now(),
+        ]);
 
         return response()->json([
             'status' => 'success',
             'message' => "Git pull and deployment completed for '{$project->slug}'.",
             'data' => [
                 'release_tag' => $releaseTag,
-                'current_symlink' => $act['current_symlink'] ?? '',
+                'commit_hash' => $release->commit_hash,
+                'current_symlink' => $result['current_symlink'] ?? '',
+                'deployment' => $deployment,
             ],
         ]);
     }

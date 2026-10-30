@@ -5,7 +5,12 @@ import {
   AIAgentItem,
   ApprovalRequestItem,
   DeploymentItem,
+  SystemUpdateStatus,
+  SystemUpdateResult,
+  UpdateFromRepoResult,
 } from '../types';
+
+export type { UpdateFromRepoResult };
 
 const DEFAULT_TOKEN = 'vps_live_test_agent_secret_key_8f0a2c3d';
 
@@ -99,6 +104,21 @@ export const api = {
     return res.data;
   },
 
+  async updateProjectFromRepo(
+    id: string,
+    options?: { repository_url?: string; branch?: string; run_build?: boolean }
+  ): Promise<{ deployment: DeploymentItem; release: any; logs: string }> {
+    const res = await request<{
+      status: string;
+      message: string;
+      data: { deployment: DeploymentItem; release: any; logs: string };
+    }>(`/api/v1/projects/${encodeURIComponent(id)}/update-from-repo`, {
+      method: 'POST',
+      body: JSON.stringify(options || {}),
+    });
+    return res.data;
+  },
+
   async rollbackProject(id: string, targetTag?: string): Promise<void> {
     await request(`/api/v1/projects/${encodeURIComponent(id)}/rollback`, {
       method: 'POST',
@@ -181,5 +201,23 @@ export const api = {
     });
     return res;
   },
+
+  // System & Panel Updates
+  async getSystemUpdateStatus(): Promise<SystemUpdateStatus> {
+    const res = await request<{ status: string; data: SystemUpdateStatus }>('/api/v1/server/update/status');
+    return res.data;
+  },
+
+  async updateSystem(branch?: string): Promise<SystemUpdateResult> {
+    const res = await request<{ status: string; message: string; data: SystemUpdateResult }>(
+      '/api/v1/server/update',
+      {
+        method: 'POST',
+        body: JSON.stringify({ branch }),
+      }
+    );
+    return res.data;
+  },
 };
+
 

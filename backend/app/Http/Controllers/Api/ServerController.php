@@ -143,5 +143,28 @@ class ServerController extends Controller
             'timestamp' => now()->toIso8601String(),
         ]);
     }
+
+    public function updateStatus(): JsonResponse
+    {
+        $status = $this->daemon->getSystemUpdateStatus();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $status,
+        ]);
+    }
+
+    public function updateSystem(Request $request): JsonResponse
+    {
+        $branch = $request->input('branch');
+        $result = $this->daemon->updateSystem($branch);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'VPS Panel update completed.',
+            'data' => $result,
+        ]);
+    }
 }
+
 

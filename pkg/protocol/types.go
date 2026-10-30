@@ -221,3 +221,51 @@ type DeleteFirewallRuleRequest struct {
 	RuleNumber int `json:"rule_number"`
 }
 
+// UpdateFromRepo Types
+type UpdateFromRepoRequest struct {
+	ProjectSlug string `json:"project_slug"`
+	RepoURL     string `json:"repo_url,omitempty"`
+	Branch      string `json:"branch,omitempty"`
+	ReleaseTag  string `json:"release_tag,omitempty"`
+	RunBuild    bool   `json:"run_build,omitempty"`
+}
+
+type UpdateFromRepoResult struct {
+	Success        bool   `json:"success"`
+	ProjectSlug    string `json:"project_slug"`
+	ReleaseTag     string `json:"release_tag"`
+	CommitHash     string `json:"commit_hash"`
+	CommitMessage  string `json:"commit_message"`
+	CommitAuthor   string `json:"commit_author"`
+	Branch         string `json:"branch"`
+	Logs           string `json:"logs"`
+	CurrentSymlink string `json:"current_symlink"`
+	TargetRelease  string `json:"target_release"`
+}
+
+// System / Panel Update Types
+type SystemUpdateStatus struct {
+	CurrentVersion  string `json:"current_version"`
+	CurrentCommit   string `json:"current_commit"`
+	CurrentBranch   string `json:"current_branch"`
+	RemoteURL       string `json:"remote_url"`
+	UpdateAvailable bool   `json:"update_available"`
+	LatestCommit    string `json:"latest_commit,omitempty"`
+	LatestMessage   string `json:"latest_message,omitempty"`
+	BehindCount     int    `json:"behind_count"`
+}
+
+type SystemUpdateRequest struct {
+	Branch string `json:"branch,omitempty"`
+}
+
+type SystemUpdateResult struct {
+	Success       bool   `json:"success"`
+	OldCommit     string `json:"old_commit"`
+	NewCommit     string `json:"new_commit"`
+	UpdatedFiles  int    `json:"updated_files"`
+	Logs          string `json:"logs"`
+	BinariesBuilt bool   `json:"binaries_built"`
+}
+
+

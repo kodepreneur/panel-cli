@@ -77,13 +77,46 @@ export interface DeploymentItem {
   project_id: string;
   project_slug: string;
   release_tag: string;
-  trigger_type: 'manual' | 'webhook' | 'agent' | 'cli';
+  trigger_type: 'manual' | 'webhook' | 'agent' | 'cli' | 'repo_update' | 'github_pull';
   triggered_by_type: string;
   status: 'queued' | 'building' | 'activating' | 'success' | 'failed';
   build_logs: string;
   duration_seconds: number;
   created_at: string;
 }
+
+export interface UpdateFromRepoResult {
+  success: boolean;
+  project_slug: string;
+  release_tag: string;
+  commit_hash?: string;
+  commit_message?: string;
+  commit_author?: string;
+  branch?: string;
+  logs: string;
+  current_symlink: string;
+  target_release: string;
+}
+
+export interface SystemUpdateStatus {
+  current_version: string;
+  current_commit: string;
+  current_branch: string;
+  remote_url: string;
+  update_available: boolean;
+  latest_commit?: string;
+  latest_message?: string;
+  behind_count: number;
+}
+
+export interface SystemUpdateResult {
+  success: boolean;
+  old_commit: string;
+  new_commit: string;
+  logs: string;
+  binaries_built: boolean;
+}
+
 
 export interface AIAgentItem {
   id: string;

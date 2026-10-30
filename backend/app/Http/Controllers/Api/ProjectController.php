@@ -186,6 +186,87 @@ class ProjectController extends Controller
         ]);
     }
 
+    public function updateFromRepo(Request $request, string $id): JsonResponse
+    {
+        $project = Project::findOrFail($id);
+        $agent = $request->attributes->get('agent');
+
+        $validated = $request->validate([
+            'repository_url' => 'nullable|string',
+            'branch' => 'nullable|string',
+            'run_build' => 'nullable|boolean',
+        ]);
+
+        $repoUrl = $validated['repository_url'] ?? $project->repository_url ?? '';
+        $branch = $validated['branch'] ?? $project->branch ?? 'main';
+        $runBuild = $request->boolean('run_build', true);
+
+        if (empty($repoUrl)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No repository URL configured for this project. Please provide a repository URL.',
+            ], 422);
+        }
+
+        // Update project repository details if provided
+        $projectUpdates = [];
+        if (!empty($validated['repository_url']) && $validated['repository_url'] !== $project->repository_url) {
+            $projectUpdates['repository_url'] = $validated['repository_url'];
+        }
+        if (!empty($validated['branch']) && $validated['branch'] !== $project->branch) {
+            $projectUpdates['branch'] = $validated['branch'];
+        }
+        if (!empty($projectUpdates)) {
+            $project->update($projectUpdates);
+        }
+
+        $startTime = microtime(true);
+        $result = $this->daemon->updateFromRepo($project->slug, $repoUrl, $branch, $runBuild);
+        $duration = max(1, (int) round(microtime(true) - $startTime));
+
+        $releaseTag = $result['release_tag'] ?? now()->format('Ymd_His');
+        $commitHash = $result['commit_hash'] ?? Str::random(8);
+        $commitMessage = $result['commit_message'] ?? 'Updated from repository';
+        $commitAuthor = $result['commit_author'] ?? ($agent ? $agent->name : 'Dashboard User');
+        $logs = $result['logs'] ?? "Repository updated and release {$releaseTag} activated.";
+
+        $release = Release::create([
+            'project_id' => $project->id,
+            'release_tag' => $releaseTag,
+            'path' => $result['target_release'] ?? '',
+            'branch' => $branch,
+            'commit_hash' => $commitHash,
+            'commit_message' => $commitMessage,
+            'commit_author' => $commitAuthor,
+            'status' => 'active',
+        ]);
+
+        $deployment = Deployment::create([
+            'project_id' => $project->id,
+            'release_id' => $release->id,
+            'trigger_type' => $agent ? 'agent' : 'repo_update',
+            'triggered_by_type' => $agent ? 'ai_agent' : 'user',
+            'triggered_by_id' => $agent ? $agent->id : null,
+            'status' => 'success',
+            'build_logs' => $logs,
+            'duration_seconds' => $duration,
+            'started_at' => now()->subSeconds($duration),
+            'completed_at' => now(),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Project '{$project->name}' successfully updated from repository.",
+            'data' => [
+                'project' => $project->fresh(['releases', 'deployments']),
+                'deployment' => $deployment,
+                'release' => $release,
+                'logs' => $logs,
+            ],
+        ]);
+    }
+
+
     public function rollback(Request $request, string $id): JsonResponse
     {
         $project = Project::findOrFail($id);

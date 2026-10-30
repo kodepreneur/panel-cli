@@ -193,6 +193,80 @@ func handleProject(cfg Config, args []string) {
 			fmt.Printf("  Pruned Releases: %s\n", strings.Join(removed, ", "))
 		}
 
+	case "update", "pull":
+		if len(args) < 2 {
+			printError(cfg, fmt.Errorf("usage: vpsctl project update <slug> [--branch=<name>] [--repo=<url>] [--no-build]"), 1)
+			return
+		}
+		slug := args[1]
+
+		branch := ""
+		repoURL := ""
+		runBuild := true
+
+		for _, rawArg := range os.Args {
+			if strings.HasPrefix(rawArg, "--branch=") {
+				branch = strings.TrimPrefix(rawArg, "--branch=")
+			} else if strings.HasPrefix(rawArg, "--repo=") {
+				repoURL = strings.TrimPrefix(rawArg, "--repo=")
+			} else if rawArg == "--no-build" {
+				runBuild = false
+			}
+		}
+
+		// Optional positional fallback
+		if branch == "" && len(args) >= 3 && !strings.Contains(args[2], "/") && !strings.HasPrefix(args[2], "http") {
+			branch = args[2]
+		}
+		if repoURL == "" && len(args) >= 3 && (strings.HasPrefix(args[2], "http") || strings.HasPrefix(args[2], "git@")) {
+			repoURL = args[2]
+		} else if repoURL == "" && len(args) >= 4 && (strings.HasPrefix(args[3], "http") || strings.HasPrefix(args[3], "git@")) {
+			repoURL = args[3]
+		}
+
+		req := protocol.UpdateFromRepoRequest{
+			ProjectSlug: slug,
+			RepoURL:     repoURL,
+			Branch:      branch,
+			RunBuild:    runBuild,
+		}
+
+		updateRes, err := client.UpdateFromRepo(req)
+		if err != nil {
+			printError(cfg, fmt.Errorf("failed to update project '%s' from repo: %w", slug, err), 1)
+			return
+		}
+
+		if cfg.JSONOutput {
+			printJSON(map[string]interface{}{
+				"status": "success",
+				"data":   updateRes,
+			})
+			return
+		}
+
+		fmt.Println("=== PROJECT REPOSITORY UPDATE ===")
+		fmt.Printf("Project:        %s\n", updateRes.ProjectSlug)
+		fmt.Printf("Release Tag:    %s\n", updateRes.ReleaseTag)
+		if updateRes.CommitHash != "" {
+			fmt.Printf("Git Commit:     %s - %s\n", updateRes.CommitHash, updateRes.CommitMessage)
+		}
+		if updateRes.CommitAuthor != "" {
+			fmt.Printf("Author:         %s\n", updateRes.CommitAuthor)
+		}
+		if updateRes.Branch != "" {
+			fmt.Printf("Branch:         %s\n", updateRes.Branch)
+		}
+		fmt.Printf("Active Symlink: %s\n", updateRes.CurrentSymlink)
+		fmt.Printf("Release Path:   %s\n", updateRes.TargetRelease)
+		fmt.Printf("Status:         ACTIVE (Zero-Downtime Deployed)\n")
+
+		if updateRes.Logs != "" {
+			fmt.Println("\n--- Build & Activation Logs ---")
+			fmt.Println(strings.TrimSpace(updateRes.Logs))
+		}
+
+
 	case "rollback":
 		if len(args) < 2 {
 			printError(cfg, fmt.Errorf("usage: vpsctl project rollback <slug> [target_release_tag]"), 1)
