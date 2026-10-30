@@ -14,39 +14,39 @@ Let humans and AI agents manage infrastructure through one unified control plane
 ```mermaid
 flowchart TD
     subgraph Interfaces["Management Interfaces"]
-        UI["Web Dashboard\n(React + Tailwind)"]
-        CLI["vpsctl CLI\n(Human & Machine --json)"]
-        AIAgents["AI Agents\n(Hermes, OpenClaw, OpenHands)"]
+        UI["Web Dashboard<br/>React + Tailwind"]
+        CLI["vpsctl CLI<br/>Human and Machine --json"]
+        AIAgents["AI Agents<br/>Hermes, OpenClaw, OpenHands"]
     end
 
-    subgraph ControlPlane["Control Plane Layer (Unprivileged)"]
-        API["REST API & Backend\n(Laravel 12 / PHP 8.4)"]
-        MCP["MCP Server (vps-mcp)\n(HTTP SSE / Stdio JSON-RPC)"]
-        DB[(Metadata & Audit Store\nSQLite / PostgreSQL)]
+    subgraph ControlPlane["Control Plane Layer - Unprivileged"]
+        API["REST API and Backend<br/>Laravel 12 / PHP 8.4"]
+        MCP["MCP Server - vps-mcp<br/>HTTP SSE / Stdio JSON-RPC"]
+        DB[("Metadata and Audit Store<br/>SQLite / PostgreSQL")]
     end
 
-    subgraph ExecutionLayer["Host Execution Layer (Privileged)"]
-        UDS["Local Unix Socket\n(/run/vpsd/vpsd.sock - 0660 root:panel-rpc)"]
-        VPSD["vpsd Host Daemon (Go)\nStrict RPC & Parameterized Execution"]
+    subgraph ExecutionLayer["Host Execution Layer - Privileged"]
+        UDS["Local Unix Socket<br/>/run/vpsd/vpsd.sock - 0660 root:panel-rpc"]
+        VPSD["vpsd Host Daemon - Go<br/>Strict RPC and Parameterized Execution"]
     end
 
-    subgraph HostServices["OS & Infrastructure Services"]
+    subgraph HostServices["OS and Infrastructure Services"]
         NGINX["Nginx Web Server"]
         FPM["PHP-FPM Pools"]
         SYSTEMD["Systemd Units"]
         CERTBOT["Certbot / Let's Encrypt"]
-        UFW["Firewall (UFW)"]
+        UFW["Firewall - UFW"]
     end
 
-    UI -->|HTTPS / REST API| API
-    CLI -->|REST API or Direct Socket| API
-    CLI -.->|Direct Socket Mode| UDS
-    AIAgents -->|Model Context Protocol| MCP
-    AIAgents -->|REST API (Agent Key)| API
+    UI -->|"HTTPS / REST API"| API
+    CLI -->|"REST API or Direct Socket"| API
+    CLI -.->|"Direct Socket Mode"| UDS
+    AIAgents -->|"Model Context Protocol"| MCP
+    AIAgents -->|"REST API - Agent Key"| API
 
-    MCP -->|Internal RPC| API
-    API -->|Read / Write| DB
-    API -->|JSON-RPC over UDS| UDS
+    MCP -->|"Internal RPC"| API
+    API -->|"Read / Write"| DB
+    API -->|"JSON-RPC over UDS"| UDS
 
     UDS --> VPSD
     VPSD --> NGINX
