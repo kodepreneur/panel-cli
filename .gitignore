@@ -1,0 +1,88 @@
+# ==============================================================================
+# AI-Native VPS Management Panel - Root .gitignore
+# ==============================================================================
+
+# Compiled Go Binaries & Build Output
+bin/
+vpsd
+vpsctl
+vps-mcp
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Sockets, PIDs & Local Daemons
+*.sock
+/run/
+*.pid
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==============================================================================
+# Backend (Laravel 12 / PHP)
+# ==============================================================================
+/backend/vendor/
+/backend/node_modules/
+/backend/public/hot
+/backend/public/storage
+/backend/storage/*.key
+/backend/storage/logs/*.log
+/backend/storage/framework/cache/*
+/backend/storage/framework/sessions/*
+/backend/storage/framework/views/*
+/backend/storage/framework/testing/*
+/backend/.env
+/backend/.env.backup
+/backend/.env.production
+/backend/.phpunit.result.cache
+/backend/database/*.sqlite
+/backend/database/*.sqlite-journal
+/backend/database/*.sqlite-wal
+/backend/database/*.sqlite-shm
+/backend/auth.json
+
+# Preserve framework structure in storage
+!/backend/storage/framework/cache/.gitignore
+!/backend/storage/framework/sessions/.gitignore
+!/backend/storage/framework/views/.gitignore
+!/backend/storage/framework/testing/.gitignore
+!/backend/storage/logs/.gitignore
+
+# ==============================================================================
+# Frontend (React / Vite / TypeScript)
+# ==============================================================================
+/frontend/node_modules/
+/frontend/dist/
+/frontend/dist-ssr/
+/frontend/.env.local
+/frontend/.env.*.local
+
+# ==============================================================================
+# Operating System & IDE Artifacts
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+.fleet/
+
