@@ -1,49 +1,48 @@
 import React, { useState } from 'react';
-import { Send, ShieldCheck } from 'lucide-react';
+import { Send, ShieldCheck, Loader2 } from 'lucide-react';
+import { api } from '../../api/client';
 
 export const TerminalView: React.FC = () => {
   const [history, setHistory] = useState<Array<{ cmd: string; out: string; time: string }>>([
     {
-      cmd: 'vpsctl server status',
-      out: `=== SERVER OVERVIEW ===\nHostname: vps-server.local\nOS: Ubuntu 24.04 LTS (x86_64)\nUptime: 72 hours\nLoad Avg: 0.42, 0.55, 0.61`,
-      time: '01:00:00',
-    },
-    {
-      cmd: 'vpsctl project list',
-      out: `=== HOSTED PROJECTS ===\nPROJECT SLUG             CURRENT RELEASE      STATUS\n------------------------------------------------------------\napi-service              20261031_010000      active\nlanding-page             20261031_011500      active`,
-      time: '01:02:15',
+      cmd: 'help',
+      out: `=== vpsctl Sandboxed Terminal ===\nConnected to live control plane.\nType 'vpsctl server status', 'vpsctl server resources', 'vpsctl project list', or 'help' to begin.`,
+      time: new Date().toLocaleTimeString(),
     },
   ]);
   const [command, setCommand] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
 
-  const handleRun = (e: React.FormEvent) => {
+  const handleRun = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!command.trim()) return;
-
     const trimmed = command.trim();
-    let out = '';
+    if (!trimmed || isRunning) return;
 
-    if (trimmed.startsWith('vpsctl project list')) {
-      out = `=== HOSTED PROJECTS ===\napi-service (nodejs:3000) - active\nlanding-page (laravel:8.4) - active`;
-    } else if (trimmed.startsWith('vpsctl server resources')) {
-      out = `CPU: 18.5% | RAM: 3.2 GB / 8.0 GB (40%) | Disk: 21.5 GB / 100 GB (21.5%)`;
-    } else if (trimmed.startsWith('vpsctl ssl status')) {
-      out = `Certificate: Let's Encrypt | Valid: true | 89 days remaining`;
-    } else if (trimmed.startsWith('help')) {
-      out = `Approved commands:\n  vpsctl server status\n  vpsctl server resources\n  vpsctl project list\n  vpsctl service list\n  vpsctl ssl status <domain>`;
-    } else {
-      out = `[Sandboxed Execution Engine] Command executed with exit code 0:\nOperation completed successfully.`;
-    }
-
-    setHistory((prev) => [
-      ...prev,
-      {
-        cmd: trimmed,
-        out,
-        time: new Date().toLocaleTimeString(),
-      },
-    ]);
     setCommand('');
+    setIsRunning(true);
+
+    try {
+      const res = await api.executeTerminal(trimmed);
+      setHistory((prev) => [
+        ...prev,
+        {
+          cmd: trimmed,
+          out: res.output || '(No output returned)',
+          time: new Date().toLocaleTimeString(),
+        },
+      ]);
+    } catch (err: any) {
+      setHistory((prev) => [
+        ...prev,
+        {
+          cmd: trimmed,
+          out: `Error: ${err.message || 'Execution failed'}`,
+          time: new Date().toLocaleTimeString(),
+        },
+      ]);
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   return (
@@ -52,12 +51,12 @@ export const TerminalView: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Interactive Administration Terminal</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Execute sandboxed vpsctl administrative operations with real-time audit logging and parameter validation.
+            Execute live vpsctl administrative operations against the host with real-time audit logging and validation.
           </p>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Sandboxed vpsctl Shell</span>
+          <span>Live vpsctl Shell</span>
         </div>
       </div>
 
@@ -68,7 +67,7 @@ export const TerminalView: React.FC = () => {
             <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            <span className="text-[11px] ml-2 text-slate-300 font-medium">vpsctl session @ vps-server</span>
+            <span className="text-[11px] ml-2 text-slate-300 font-medium">live session @ host</span>
           </div>
           <span className="text-[10px] text-slate-500">type 'help' for approved commands</span>
         </div>
@@ -87,6 +86,12 @@ export const TerminalView: React.FC = () => {
               </div>
             </div>
           ))}
+          {isRunning && (
+            <div className="flex items-center gap-2 text-slate-400 pl-4 py-1">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+              <span className="text-[11px] text-slate-400">Executing command on host...</span>
+            </div>
+          )}
         </div>
 
         {/* Terminal Input Form */}
@@ -96,13 +101,15 @@ export const TerminalView: React.FC = () => {
             type="text"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
-            placeholder="e.g. vpsctl server resources, vpsctl project list, help..."
-            className="flex-1 bg-transparent text-slate-100 focus:outline-none font-mono text-xs"
+            disabled={isRunning}
+            placeholder="e.g. vpsctl server resources, vpsctl server status, help..."
+            className="flex-1 bg-transparent text-slate-100 focus:outline-none font-mono text-xs disabled:opacity-50"
             autoFocus
           />
           <button
             type="submit"
-            className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800"
+            disabled={isRunning || !command.trim()}
+            className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 disabled:opacity-40"
           >
             <Send className="w-3.5 h-3.5" />
           </button>

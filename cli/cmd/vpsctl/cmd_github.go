@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 func handleGithub(cfg Config, args []string) {
@@ -27,13 +31,10 @@ func handleGithub(cfg Config, args []string) {
 			return
 		}
 		fmt.Println("To connect GitHub, visit the Web Dashboard at: /dashboard/github/connect")
-		fmt.Println("Or configure personal access token in Settings.")
+		fmt.Println("Or configure personal access token via GITHUB_TOKEN in your environment.")
 
 	case "repositories":
-		repos := []map[string]string{
-			{"name": "kodepreneur/landing-page", "private": "false", "default_branch": "main"},
-			{"name": "kodepreneur/api-service", "private": "true", "default_branch": "main"},
-		}
+		repos := fetchGitHubRepositories()
 
 		if cfg.JSONOutput {
 			printJSON(map[string]interface{}{
@@ -44,14 +45,20 @@ func handleGithub(cfg Config, args []string) {
 		}
 
 		fmt.Println("=== GITHUB REPOSITORIES ===")
-		fmt.Printf("%-32s %-10s %s\n", "REPOSITORY", "VISIBILITY", "BRANCH")
-		fmt.Println("--------------------------------------------------")
+		if len(repos) == 0 {
+			fmt.Println("No GitHub repositories connected.")
+			fmt.Println("Link a GitHub repository using 'vpsctl github connect' or set GITHUB_TOKEN.")
+			return
+		}
+
+		fmt.Printf("%-36s %-12s %s\n", "REPOSITORY", "VISIBILITY", "BRANCH")
+		fmt.Println(strings.Repeat("-", 60))
 		for _, r := range repos {
 			vis := "public"
 			if r["private"] == "true" {
 				vis = "private"
 			}
-			fmt.Printf("%-32s %-10s %s\n", r["name"], vis, r["default_branch"])
+			fmt.Printf("%-36s %-12s %s\n", r["name"], vis, r["default_branch"])
 		}
 
 	case "pull":
@@ -60,7 +67,14 @@ func handleGithub(cfg Config, args []string) {
 			return
 		}
 		slug := args[1]
-		projDir := filepath.Join("/var/www/vps-panel/projects", slug, "current")
+		baseDir := "/var/www/vps-panel/projects"
+		if envDir := os.Getenv("VPSD_PROJECTS_DIR"); envDir != "" {
+			baseDir = envDir
+		} else if _, err := os.Stat("storage/projects"); err == nil {
+			baseDir = "storage/projects"
+		}
+
+		projDir := filepath.Join(baseDir, slug, "current")
 
 		if _, err := os.Stat(projDir); os.IsNotExist(err) {
 			printError(cfg, fmt.Errorf("project '%s' current release directory not found at %s", slug, projDir), 1)
@@ -94,3 +108,47 @@ func handleGithub(cfg Config, args []string) {
 	}
 }
 
+func fetchGitHubRepositories() []map[string]string {
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return []map[string]string{}
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequest("GET", "https://api.github.com/user/repos?per_page=30&sort=updated", nil)
+	if err != nil {
+		return []map[string]string{}
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return []map[string]string{}
+	}
+	defer resp.Body.Close()
+
+	var ghRepos []struct {
+		FullName      string `json:"full_name"`
+		Private       bool   `json:"private"`
+		DefaultBranch string `json:"default_branch"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&ghRepos); err != nil {
+		return []map[string]string{}
+	}
+
+	var results []map[string]string
+	for _, r := range ghRepos {
+		vis := "false"
+		if r.Private {
+			vis = "true"
+		}
+		results = append(results, map[string]string{
+			"name":           r.FullName,
+			"private":        vis,
+			"default_branch": r.DefaultBranch,
+		})
+	}
+	return results
+}

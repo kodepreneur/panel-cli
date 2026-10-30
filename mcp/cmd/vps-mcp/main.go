@@ -465,6 +465,10 @@ func (s *MCPServer) executeTool(name string, args map[string]interface{}) ToolRe
 		baseDir := "/var/www/vps-panel/projects"
 		if envDir := os.Getenv("VPSD_PROJECTS_DIR"); envDir != "" {
 			baseDir = envDir
+		} else if _, err := os.Stat(baseDir); err != nil {
+			if _, err2 := os.Stat("storage/projects"); err2 == nil {
+				baseDir = "storage/projects"
+			}
 		}
 		entries, err := os.ReadDir(baseDir)
 		var projects []map[string]interface{}
@@ -618,10 +622,35 @@ func (s *MCPServer) executeTool(name string, args map[string]interface{}) ToolRe
 		return formatJSONResult(res)
 
 	case "github_list_repositories":
-		return formatJSONResult([]map[string]string{
-			{"name": "kodepreneur/landing-page", "private": "false", "default_branch": "main"},
-			{"name": "kodepreneur/api-service", "private": "true", "default_branch": "main"},
-		})
+		token := os.Getenv("GITHUB_TOKEN")
+		if token != "" {
+			req, err := http.NewRequest("GET", "https://api.github.com/user/repos?per_page=30&sort=updated", nil)
+			if err == nil {
+				req.Header.Set("Authorization", "Bearer "+token)
+				req.Header.Set("Accept", "application/vnd.github.v3+json")
+				resp, errResp := http.DefaultClient.Do(req)
+				if errResp == nil && resp.StatusCode == http.StatusOK {
+					defer resp.Body.Close()
+					var ghRepos []struct {
+						FullName      string `json:"full_name"`
+						Private       bool   `json:"private"`
+						DefaultBranch string `json:"default_branch"`
+					}
+					if errDec := json.NewDecoder(resp.Body).Decode(&ghRepos); errDec == nil {
+						var repos []map[string]interface{}
+						for _, r := range ghRepos {
+							repos = append(repos, map[string]interface{}{
+								"name":           r.FullName,
+								"private":        r.Private,
+								"default_branch": r.DefaultBranch,
+							})
+						}
+						return formatJSONResult(repos)
+					}
+				}
+			}
+		}
+		return formatJSONResult([]map[string]interface{}{})
 
 	default:
 		return formatErrorResult(fmt.Errorf("unsupported tool: %s", name))

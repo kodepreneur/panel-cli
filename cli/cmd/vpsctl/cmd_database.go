@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/kodepreneur/vps-panel/pkg/protocol"
 )
@@ -16,21 +19,28 @@ func handleDatabase(cfg Config, args []string) {
 
 	switch sub {
 	case "list":
-		// Mock/read-only list when local socket
+		databases := getDatabasesFromDB()
+
 		if cfg.JSONOutput {
 			printJSON(map[string]interface{}{
 				"status": "success",
-				"data": []map[string]string{
-					{"name": "vps_panel", "engine": "mysql", "charset": "utf8mb4"},
-				},
+				"data":   databases,
 			})
 			return
 		}
 
 		fmt.Println("=== DATABASES ===")
-		fmt.Printf("%-20s %-12s %s\n", "NAME", "ENGINE", "CHARSET")
-		fmt.Println("----------------------------------------")
-		fmt.Printf("%-20s %-12s %s\n", "vps_panel", "mysql", "utf8mb4")
+		if len(databases) == 0 {
+			fmt.Println("No databases configured yet.")
+			fmt.Println("Use 'vpsctl database create <db_name> <username> <password> [engine]' to create one.")
+			return
+		}
+
+		fmt.Printf("%-24s %-12s %s\n", "NAME", "ENGINE", "CHARSET")
+		fmt.Println(strings.Repeat("-", 48))
+		for _, db := range databases {
+			fmt.Printf("%-24s %-12s %s\n", db["name"], db["engine"], db["charset"])
+		}
 
 	case "create":
 		if len(args) < 4 {
@@ -64,6 +74,14 @@ func handleDatabase(cfg Config, args []string) {
 			return
 		}
 
+		// Record in database
+		dbPath := findDBPath()
+		if dbPath != "" {
+			insertCmd := fmt.Sprintf("INSERT OR REPLACE INTO databases (id, engine, name, username, charset, collation, status, created_at, updated_at) VALUES ('db_%s', '%s', '%s', '%s', 'utf8mb4', 'utf8mb4_unicode_ci', 'active', datetime('now'), datetime('now'));",
+				dbName, engine, dbName, username)
+			_ = exec.Command("sqlite3", dbPath, insertCmd).Run()
+		}
+
 		if cfg.JSONOutput {
 			printJSON(map[string]interface{}{
 				"status": "success",
@@ -81,3 +99,42 @@ func handleDatabase(cfg Config, args []string) {
 	}
 }
 
+func getDatabasesFromDB() []map[string]string {
+	dbPaths := []string{
+		"/var/www/vps-panel/panel/database/database.sqlite",
+		"backend/database/database.sqlite",
+		"../backend/database/database.sqlite",
+	}
+	var dbPath string
+	for _, p := range dbPaths {
+		if _, err := os.Stat(p); err == nil {
+			dbPath = p
+			break
+		}
+	}
+	if dbPath == "" {
+		return []map[string]string{}
+	}
+
+	out, err := exec.Command("sqlite3", dbPath, "SELECT name, engine, charset FROM databases;").CombinedOutput()
+	if err != nil {
+		return []map[string]string{}
+	}
+
+	var list []map[string]string
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.Split(line, "|")
+		if len(parts) >= 3 {
+			list = append(list, map[string]string{
+				"name":    parts[0],
+				"engine":  parts[1],
+				"charset": parts[2],
+			})
+		}
+	}
+	return list
+}

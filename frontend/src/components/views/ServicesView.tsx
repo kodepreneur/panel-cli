@@ -44,7 +44,13 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ services, onRestartS
                     <Cpu className="w-4 h-4 text-blue-600" />
                     <h3 className="font-bold text-slate-900 text-sm">{service.display_name}</h3>
                   </div>
-                  <span className="font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[10px] border border-emerald-200 uppercase font-semibold">
+                  <span
+                    className={`font-mono px-2 py-0.5 rounded text-[10px] uppercase font-semibold border ${
+                      service.status === 'active' || service.running
+                        ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                        : 'text-slate-500 bg-slate-100 border-slate-200'
+                    }`}
+                  >
                     {service.status}
                   </span>
                 </div>

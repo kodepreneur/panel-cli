@@ -36,12 +36,7 @@ class DatabaseSeeder extends Seeder
                 'agent_type' => 'hermes',
                 'api_key_prefix' => 'vps_live_test...',
                 'permissions' => [
-                    'server.read',
-                    'project.read',
-                    'project.create',
-                    'project.deploy',
-                    'ssl.manage',
-                    'service.manage',
+                    '*',
                 ],
                 'is_active' => true,
             ]

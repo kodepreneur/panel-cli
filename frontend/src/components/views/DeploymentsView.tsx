@@ -32,40 +32,52 @@ export const DeploymentsView: React.FC<DeploymentsViewProps> = ({
           </div>
 
           <div className="divide-y divide-slate-100">
-            {deployments.map((dep) => (
-              <div
-                key={dep.id}
-                onClick={() => setActiveLog(dep.build_logs)}
-                className="p-4 hover:bg-slate-50 cursor-pointer transition-colors flex items-center justify-between text-xs"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-900">{dep.project_slug}</span>
-                    <span className="font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
-                      {dep.release_tag}
-                    </span>
-                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                      {dep.trigger_type}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-slate-500 flex items-center gap-3">
-                    <span className="flex items-center gap-1 font-mono text-[11px]">
-                      <GitCommit className="w-3 h-3 text-slate-400" /> main (head)
-                    </span>
-                    <span className="flex items-center gap-1 text-[11px]">
-                      <Clock className="w-3 h-3 text-slate-400" /> {dep.duration_seconds}s duration
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] font-medium border border-emerald-200">
-                    <CheckCircle2 className="w-3 h-3" /> success
-                  </span>
-                  <ArrowRight className="w-4 h-4 text-slate-300" />
-                </div>
+            {deployments.length === 0 ? (
+              <div className="p-8 text-center text-slate-400">
+                <ScrollText className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-xs font-medium text-slate-600">No deployments recorded yet</p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Trigger an atomic zero-downtime release from the Projects tab or using <code>vpsctl project deploy &lt;slug&gt;</code>.
+                </p>
               </div>
-            ))}
+            ) : (
+              deployments.map((dep) => (
+                <div
+                  key={dep.id}
+                  onClick={() => setActiveLog(dep.build_logs)}
+                  className={`p-4 hover:bg-slate-50 cursor-pointer transition-colors flex items-center justify-between text-xs ${
+                    activeLog === dep.build_logs ? 'bg-blue-50/50' : ''
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900">{dep.project_slug}</span>
+                      <span className="font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
+                        {dep.release_tag}
+                      </span>
+                      <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                        {dep.trigger_type}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-slate-500 flex items-center gap-3">
+                      <span className="flex items-center gap-1 font-mono text-[11px]">
+                        <GitCommit className="w-3 h-3 text-slate-400" /> main (head)
+                      </span>
+                      <span className="flex items-center gap-1 text-[11px]">
+                        <Clock className="w-3 h-3 text-slate-400" /> {dep.duration_seconds}s duration
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] font-medium border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3" /> {dep.status || 'success'}
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-slate-300" />
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -83,16 +95,9 @@ export const DeploymentsView: React.FC<DeploymentsViewProps> = ({
 
           <div className="flex-1 overflow-y-auto mt-3 space-y-1 text-slate-300 text-[11px] leading-relaxed whitespace-pre-wrap select-text">
             {activeLog ||
-`[vps-deploy] Initializing deployment runner...
-[vps-deploy] Target path: /var/www/vps-panel/projects/api-service/releases/20261031_010000
-[vps-deploy] Linking shared/.env -> releases/20261031_010000/.env
-[vps-deploy] Linking shared/storage -> releases/20261031_010000/storage
-[vps-deploy] Running dependency installation...
-[vps-deploy] npm install --production --silent (completed in 2.1s)
-[vps-deploy] Atomic symlink swap: current.tmp -> releases/20261031_010000
-[vps-deploy] os.Rename("current.tmp", "current") - atomic POSIX switch OK
-[vps-deploy] Pruning releases older than keep_count(5)...
-[vps-deploy] Deployment completed successfully in 3.42s.`}
+              (deployments.length > 0 && deployments[0].build_logs
+                ? deployments[0].build_logs
+                : 'No active deployment logs selected.\nSelect an execution from the list to inspect build and atomic symlink logs.')}
           </div>
         </div>
       </div>

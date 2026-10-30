@@ -2,11 +2,19 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
+
+func sha256Hex(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
 
 func handleAgent(cfg Config, args []string) {
 	if len(args) == 0 {
@@ -17,26 +25,7 @@ func handleAgent(cfg Config, args []string) {
 
 	switch sub {
 	case "list":
-		agents := []map[string]interface{}{
-			{
-				"id":          "ag_hermes_01",
-				"name":        "Hermes Autonomous DevOps",
-				"agent_type":  "hermes",
-				"key_prefix":  "vps_live_8f0a...",
-				"status":      "active",
-				"permissions": []string{"server.read", "project.read", "project.deploy"},
-				"created_at":  time.Now().Add(-48 * time.Hour).Format(time.RFC3339),
-			},
-			{
-				"id":          "ag_openclaw_01",
-				"name":        "OpenClaw Infra Agent",
-				"agent_type":  "openclaw",
-				"key_prefix":  "vps_live_4b2c...",
-				"status":      "active",
-				"permissions": []string{"server.read", "project.read", "project.create", "ssl.manage"},
-				"created_at":  time.Now().Add(-12 * time.Hour).Format(time.RFC3339),
-			},
-		}
+		agents := getAgentsFromDB()
 
 		if cfg.JSONOutput {
 			printJSON(map[string]interface{}{
@@ -47,10 +36,16 @@ func handleAgent(cfg Config, args []string) {
 		}
 
 		fmt.Println("=== CONNECTED AI AGENTS ===")
-		fmt.Printf("%-16s %-24s %-12s %-10s %s\n", "AGENT ID", "NAME", "TYPE", "STATUS", "KEY PREFIX")
-		fmt.Println(strings.Repeat("-", 75))
+		if len(agents) == 0 {
+			fmt.Println("No connected AI agents found.")
+			fmt.Println("Use 'vpsctl agent create <name> <type>' to provision an agent.")
+			return
+		}
+
+		fmt.Printf("%-38s %-26s %-10s %-10s %s\n", "AGENT ID", "NAME", "TYPE", "STATUS", "KEY PREFIX")
+		fmt.Println(strings.Repeat("-", 95))
 		for _, a := range agents {
-			fmt.Printf("%-16s %-24s %-12s %-10s %s\n", a["id"], a["name"], a["agent_type"], a["status"], a["key_prefix"])
+			fmt.Printf("%-38s %-26s %-10s %-10s %s\n", a["id"], a["name"], a["agent_type"], a["status"], a["key_prefix"])
 		}
 
 	case "create":
@@ -65,7 +60,16 @@ func handleAgent(cfg Config, args []string) {
 		rawBytes := make([]byte, 24)
 		_, _ = rand.Read(rawBytes)
 		apiKey := "vps_live_" + hex.EncodeToString(rawBytes)
+		keyPrefix := apiKey[:15] + "..."
+
+		// If DB is available, insert directly
+		dbPath := findDBPath()
 		agentID := "ag_" + agentType + "_" + hex.EncodeToString(rawBytes[:4])
+		if dbPath != "" {
+			insertCmd := fmt.Sprintf("INSERT INTO ai_agents (id, name, agent_type, api_key_hash, api_key_prefix, permissions, is_active, created_at, updated_at) VALUES ('%s', '%s', '%s', '%s', '%s', '[\"*\"]', 1, datetime('now'), datetime('now'));",
+				agentID, name, agentType, sha256Hex(apiKey), keyPrefix)
+			_ = exec.Command("sqlite3", dbPath, insertCmd).Run()
+		}
 
 		res := map[string]interface{}{
 			"id":         agentID,
@@ -74,10 +78,7 @@ func handleAgent(cfg Config, args []string) {
 			"api_key":    apiKey,
 			"status":     "active",
 			"permissions": []string{
-				"server.read",
-				"project.read",
-				"project.deploy",
-				"ssl.manage",
+				"*",
 			},
 			"created_at": time.Now().Format(time.RFC3339),
 		}
@@ -103,6 +104,11 @@ func handleAgent(cfg Config, args []string) {
 		}
 		agentID := args[1]
 
+		dbPath := findDBPath()
+		if dbPath != "" {
+			_ = exec.Command("sqlite3", dbPath, fmt.Sprintf("DELETE FROM ai_agents WHERE id='%s';", agentID)).Run()
+		}
+
 		if cfg.JSONOutput {
 			printJSON(map[string]interface{}{
 				"status": "success",
@@ -117,17 +123,7 @@ func handleAgent(cfg Config, args []string) {
 		fmt.Printf("Agent '%s' revoked successfully.\n", agentID)
 
 	case "approvals":
-		approvals := []map[string]interface{}{
-			{
-				"id":         "appr_101",
-				"agent_id":   "ag_hermes_01",
-				"agent_name": "Hermes Autonomous DevOps",
-				"action":     "project.delete",
-				"target":     "old-staging-app",
-				"status":     "pending",
-				"requested":  time.Now().Add(-5 * time.Minute).Format(time.RFC3339),
-			},
-		}
+		approvals := getPendingApprovalsFromDB()
 
 		if cfg.JSONOutput {
 			printJSON(map[string]interface{}{
@@ -143,10 +139,10 @@ func handleAgent(cfg Config, args []string) {
 			return
 		}
 
-		fmt.Printf("%-12s %-20s %-16s %-16s %s\n", "ID", "AGENT", "ACTION", "TARGET", "STATUS")
-		fmt.Println(strings.Repeat("-", 75))
-		for _, ap := range approvals {
-			fmt.Printf("%-12s %-20s %-16s %-16s %s\n", ap["id"], ap["agent_name"], ap["action"], ap["target"], ap["status"])
+		fmt.Printf("%-38s %-20s %-16s %-20s %s\n", "REQUEST ID", "AGENT", "ACTION", "TARGET", "STATUS")
+		fmt.Println(strings.Repeat("-", 100))
+		for _, appr := range approvals {
+			fmt.Printf("%-38s %-20s %-16s %-20s %s\n", appr["id"], appr["agent_name"], appr["action"], appr["target"], appr["status"])
 		}
 
 	default:
@@ -154,3 +150,88 @@ func handleAgent(cfg Config, args []string) {
 	}
 }
 
+func findDBPath() string {
+	dbPaths := []string{
+		"/var/www/vps-panel/panel/database/database.sqlite",
+		"backend/database/database.sqlite",
+		"../backend/database/database.sqlite",
+	}
+	for _, p := range dbPaths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+func getAgentsFromDB() []map[string]interface{} {
+	dbPath := findDBPath()
+	if dbPath == "" {
+		return []map[string]interface{}{}
+	}
+
+	out, err := exec.Command("sqlite3", dbPath, "SELECT id, name, agent_type, api_key_prefix, is_active FROM ai_agents;").CombinedOutput()
+	if err != nil {
+		return []map[string]interface{}{}
+	}
+
+	var list []map[string]interface{}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.Split(line, "|")
+		if len(parts) >= 5 {
+			status := "inactive"
+			if parts[4] == "1" {
+				status = "active"
+			}
+			list = append(list, map[string]interface{}{
+				"id":         parts[0],
+				"name":       parts[1],
+				"agent_type": parts[2],
+				"key_prefix": parts[3],
+				"status":     status,
+			})
+		}
+	}
+	return list
+}
+
+func getPendingApprovalsFromDB() []map[string]interface{} {
+	dbPath := findDBPath()
+	if dbPath == "" {
+		return []map[string]interface{}{}
+	}
+
+	out, err := exec.Command("sqlite3", dbPath, "SELECT a.id, a.agent_id, ag.name, a.action_type, a.resource_id, a.status, a.created_at FROM approval_requests a LEFT JOIN ai_agents ag ON a.agent_id = ag.id WHERE a.status='pending';").CombinedOutput()
+	if err != nil {
+		return []map[string]interface{}{}
+	}
+
+	var list []map[string]interface{}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.Split(line, "|")
+		if len(parts) >= 6 {
+			agentName := parts[2]
+			if agentName == "" {
+				agentName = "AI Agent"
+			}
+			list = append(list, map[string]interface{}{
+				"id":         parts[0],
+				"agent_id":   parts[1],
+				"agent_name": agentName,
+				"action":     parts[3],
+				"target":     parts[4],
+				"status":     parts[5],
+				"requested":  parts[6],
+			})
+		}
+	}
+	return list
+}

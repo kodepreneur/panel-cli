@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar, NavItem } from './components/Sidebar';
 import { Header } from './components/Header';
 import { OverviewView } from './components/views/OverviewView';
@@ -16,6 +16,7 @@ import {
   ApprovalRequestItem,
   DeploymentItem,
 } from './types';
+import { api } from './api/client';
 import { X, Copy, Check, Terminal } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -24,197 +25,122 @@ export const App: React.FC = () => {
   const [cliModalOpen, setCliModalOpen] = useState(false);
   const [copiedCLI, setCopiedCLI] = useState(false);
 
-  // Core state
+  // Live state fetched directly from control plane backend
   const [overview, setOverview] = useState<ServerOverview | undefined>();
-  const [projects, setProjects] = useState<ProjectItem[]>([
-    {
-      id: 'proj_01',
-      name: 'Landing Page',
-      slug: 'landing-page',
-      domain: 'kodepreneur.com',
-      project_type: 'laravel',
-      branch: 'main',
-      root_dir: '/var/www/vps-panel/projects/landing-page/current',
-      status: 'active',
-      ssl_enabled: true,
-      created_at: new Date().toISOString(),
-      releases: [
-        {
-          id: 'rel_01',
-          project_id: 'proj_01',
-          release_tag: '20261031_010000',
-          commit_hash: 'a7f9c2d',
-          status: 'active',
-          created_at: new Date().toISOString(),
-        },
-      ],
-    },
-    {
-      id: 'proj_02',
-      name: 'API Service',
-      slug: 'api-service',
-      domain: 'api.kodepreneur.com',
-      project_type: 'nodejs',
-      upstream_port: 3000,
-      branch: 'main',
-      root_dir: '/var/www/vps-panel/projects/api-service/current',
-      status: 'active',
-      ssl_enabled: true,
-      created_at: new Date().toISOString(),
-      releases: [
-        {
-          id: 'rel_02',
-          project_id: 'proj_02',
-          release_tag: '20261031_011500',
-          commit_hash: '3e4b10a',
-          status: 'active',
-          created_at: new Date().toISOString(),
-        },
-      ],
-    },
-  ]);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [services, setServices] = useState<ServiceItem[]>([]);
+  const [agents, setAgents] = useState<AIAgentItem[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequestItem[]>([]);
+  const [deployments, setDeployments] = useState<DeploymentItem[]>([]);
 
-  const [services] = useState<ServiceItem[]>([
-    { name: 'nginx', display_name: 'Nginx Web Server', active: true, running: true, status: 'active' },
-    { name: 'php8.4-fpm', display_name: 'PHP 8.4 FPM', active: true, running: true, status: 'active' },
-    { name: 'mysql', display_name: 'MySQL Database', active: true, running: true, status: 'active' },
-    { name: 'redis', display_name: 'Redis Cache & Queue', active: true, running: true, status: 'active' },
-    { name: 'ufw', display_name: 'UFW Firewall', active: true, running: true, status: 'active' },
-  ]);
+  const fetchResources = useCallback(async () => {
+    try {
+      const data = await api.getResources();
+      setOverview(data);
+    } catch (e) {
+      console.error('Failed to fetch server resources:', e);
+    }
+  }, []);
 
-  const [agents, setAgents] = useState<AIAgentItem[]>([
-    {
-      id: 'ag_hermes_01',
-      name: 'Hermes Autonomous DevOps',
-      agent_type: 'hermes',
-      api_key_prefix: 'vps_live_8f0a...',
-      permissions: ['server.read', 'project.read', 'project.create', 'project.deploy', 'ssl.manage'],
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'ag_openclaw_01',
-      name: 'OpenClaw Infra Agent',
-      agent_type: 'openclaw',
-      api_key_prefix: 'vps_live_4b2c...',
-      permissions: ['server.read', 'project.read', 'service.manage'],
-      is_active: true,
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  const fetchServicesData = useCallback(async () => {
+    try {
+      const data = await api.getServices();
+      setServices(data);
+    } catch (e) {
+      console.error('Failed to fetch services:', e);
+    }
+  }, []);
 
-  const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequestItem[]>([
-    {
-      id: 'appr_01',
-      agent_id: 'ag_hermes_01',
-      agent: {
-        id: 'ag_hermes_01',
-        name: 'Hermes Autonomous DevOps',
-        agent_type: 'hermes',
-        api_key_prefix: 'vps_live_8f0a...',
-        permissions: [],
-        is_active: true,
-        created_at: new Date().toISOString(),
-      },
-      action_type: 'project.delete',
-      resource_type: 'project',
-      resource_id: 'old-staging-app',
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  const fetchProjectsData = useCallback(async () => {
+    try {
+      const data = await api.getProjects();
+      setProjects(data);
 
-  const [deployments, setDeployments] = useState<DeploymentItem[]>([
-    {
-      id: 'dep_01',
-      project_id: 'proj_01',
-      project_slug: 'landing-page',
-      release_tag: '20261031_010000',
-      trigger_type: 'webhook',
-      triggered_by_type: 'github',
-      status: 'success',
-      build_logs: `[vps-deploy] git pull origin main\n[vps-deploy] composer install --no-dev --optimize-autoloader\n[vps-deploy] php artisan optimize\n[vps-deploy] Symlink updated: current -> releases/20261031_010000\n[vps-deploy] Deployment completed in 3.4s.`,
-      duration_seconds: 3,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'dep_02',
-      project_id: 'proj_02',
-      project_slug: 'api-service',
-      release_tag: '20261031_011500',
-      trigger_type: 'agent',
-      triggered_by_type: 'hermes',
-      status: 'success',
-      build_logs: `[vps-deploy] Triggered by Hermes AI Agent.\n[vps-deploy] npm install --production\n[vps-deploy] systemctl reload vps-api-service\n[vps-deploy] Release activated cleanly.`,
-      duration_seconds: 2,
-      created_at: new Date().toISOString(),
-    },
-  ]);
+      // Extract real deployments across projects
+      const allDeps: DeploymentItem[] = [];
+      data.forEach((p: any) => {
+        if (p.deployments && Array.isArray(p.deployments)) {
+          p.deployments.forEach((d: any) => {
+            allDeps.push({
+              ...d,
+              project_slug: p.slug,
+            });
+          });
+        } else if (p.releases && Array.isArray(p.releases)) {
+          p.releases.forEach((r: any) => {
+            allDeps.push({
+              id: `dep_${r.id}`,
+              project_id: p.id,
+              project_slug: p.slug,
+              release_tag: r.release_tag,
+              trigger_type: 'cli',
+              triggered_by_type: 'vpsctl',
+              status: r.status === 'active' ? 'success' : 'failed',
+              build_logs: `[vps-deploy] Project: ${p.name} (${p.slug})\n[vps-deploy] Release: ${r.release_tag}\n[vps-deploy] Status: ${r.status}\n[vps-deploy] Path: ${r.path || p.root_dir}`,
+              duration_seconds: 3,
+              created_at: r.created_at,
+            });
+          });
+        }
+      });
+      allDeps.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setDeployments(allDeps);
+    } catch (e) {
+      console.error('Failed to fetch projects:', e);
+    }
+  }, []);
 
-  const fetchMetrics = async () => {
+  const fetchAgentsData = useCallback(async () => {
+    try {
+      const data = await api.getAgents();
+      setAgents(data);
+    } catch (e) {
+      console.error('Failed to fetch agents:', e);
+    }
+  }, []);
+
+  const fetchApprovalsData = useCallback(async () => {
+    try {
+      const data = await api.getPendingApprovals();
+      setPendingApprovals(data);
+    } catch (e) {
+      console.error('Failed to fetch approvals:', e);
+    }
+  }, []);
+
+  const refreshAll = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      const res = await fetch('/api/v1/server/resources');
-      if (res.ok) {
-        const json = await res.json();
-        setOverview(json.data);
-      }
-    } catch (e) {
-      // Mock metrics in dev mode
-      setOverview({
-        uptime_seconds: 72400,
-        os: {
-          name: 'Ubuntu',
-          version: 'Ubuntu 24.04 LTS',
-          kernel: '6.8.0-generic',
-          arch: 'x86_64',
-          hostname: 'vps-server.local',
-        },
-        cpu: {
-          model: 'AMD EPYC 7763 64-Core Processor',
-          cores: 4,
-          usage_percent: 21.4,
-        },
-        memory: {
-          total_bytes: 8589934592,
-          used_bytes: 3435973836,
-          free_bytes: 5153960756,
-          usage_percent: 40.0,
-          swap_total_bytes: 2147483648,
-          swap_used_bytes: 0,
-        },
-        disks: [
-          {
-            mount: '/',
-            filesystem: 'ext4',
-            total_bytes: 107374182400,
-            used_bytes: 23088947200,
-            free_bytes: 84285235200,
-            usage_percent: 21.5,
-          },
-        ],
-        network: [
-          {
-            interface: 'eth0',
-            rx_bytes: 104857600,
-            tx_bytes: 52428800,
-          },
-        ],
-        load_avg: [0.42, 0.55, 0.61],
-        timestamp: new Date().toISOString(),
-      });
+      await Promise.allSettled([
+        fetchResources(),
+        fetchServicesData(),
+        fetchProjectsData(),
+        fetchAgentsData(),
+        fetchApprovalsData(),
+      ]);
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [
+    fetchResources,
+    fetchServicesData,
+    fetchProjectsData,
+    fetchAgentsData,
+    fetchApprovalsData,
+  ]);
 
   useEffect(() => {
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, 10000);
+    refreshAll();
+    const interval = setInterval(() => {
+      fetchResources();
+      fetchApprovalsData();
+    }, 8000);
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshAll, fetchResources, fetchApprovalsData]);
 
-  // Action handlers
+  // Action handlers connected to backend REST API
   const handleCreateProject = async (data: {
     name: string;
     domain: string;
@@ -223,68 +149,55 @@ export const App: React.FC = () => {
     branch?: string;
     enable_ssl: boolean;
   }) => {
-    const slug = data.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const newProj: ProjectItem = {
-      id: `proj_${Date.now()}`,
-      name: data.name,
-      slug,
-      domain: data.domain,
-      project_type: data.project_type as any,
-      branch: data.branch || 'main',
-      root_dir: `/var/www/vps-panel/projects/${slug}/current`,
-      status: 'active',
-      ssl_enabled: data.enable_ssl,
-      created_at: new Date().toISOString(),
-      releases: [
-        {
-          id: `rel_${Date.now()}`,
-          project_id: `proj_${Date.now()}`,
-          release_tag: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 15),
-          status: 'active',
-          created_at: new Date().toISOString(),
-        },
-      ],
-    };
-    setProjects([newProj, ...projects]);
+    await api.createProject(data);
+    await fetchProjectsData();
   };
 
   const handleDeploy = async (id: string) => {
     const proj = projects.find((p) => p.id === id);
     if (!proj) return;
-    const releaseTag = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 15);
-    const newDep: DeploymentItem = {
-      id: `dep_${Date.now()}`,
-      project_id: proj.id,
-      project_slug: proj.slug,
-      release_tag: releaseTag,
-      trigger_type: 'manual',
-      triggered_by_type: 'dashboard',
-      status: 'success',
-      build_logs: `[vps-deploy] Manual trigger for ${proj.slug}\n[vps-deploy] Activated release ${releaseTag} cleanly.`,
-      duration_seconds: 3,
-      created_at: new Date().toISOString(),
-    };
-    setDeployments([newDep, ...deployments]);
-    alert(`Deployment triggered and activated for ${proj.name}!`);
+    try {
+      await api.deployProject(id);
+      await fetchProjectsData();
+      alert(`Deployment triggered and activated for ${proj.name}!`);
+    } catch (err: any) {
+      alert(`Deployment failed: ${err.message}`);
+    }
   };
 
   const handleRollback = async (id: string) => {
     const proj = projects.find((p) => p.id === id);
     if (!proj) return;
-    alert(`Project '${proj.name}' rolled back to previous active release.`);
+    try {
+      await api.rollbackProject(id);
+      await fetchProjectsData();
+      alert(`Project '${proj.name}' rolled back to previous active release.`);
+    } catch (err: any) {
+      alert(`Rollback failed: ${err.message}`);
+    }
   };
 
   const handleDeleteProject = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this project and remove its Nginx configuration?')) {
+    const proj = projects.find((p) => p.id === id);
+    if (!confirm(`Are you sure you want to delete ${proj?.name || 'this project'}?`)) {
       return;
     }
-    setProjects(projects.filter((p) => p.id !== id));
+    try {
+      await api.deleteProject(id);
+      await fetchProjectsData();
+    } catch (err: any) {
+      alert(`Delete failed: ${err.message}`);
+    }
   };
 
   const handleInstallSSL = async (projectId: string) => {
-    setProjects(
-      projects.map((p) => (p.id === projectId ? { ...p, ssl_enabled: true } : p))
-    );
+    try {
+      await api.installSSL(projectId);
+      await fetchProjectsData();
+      alert('SSL Certificate successfully issued and virtual host configured.');
+    } catch (err: any) {
+      alert(`SSL install failed: ${err.message}`);
+    }
   };
 
   const handleCreateAgent = async (data: {
@@ -292,36 +205,49 @@ export const App: React.FC = () => {
     agent_type: string;
     permissions: string[];
   }) => {
-    const rawKey = `vps_live_${Math.random().toString(36).substring(2)}${Math.random().toString(36).substring(2)}`;
-    const newAgent: AIAgentItem = {
-      id: `ag_${Date.now()}`,
-      name: data.name,
-      agent_type: data.agent_type as any,
-      api_key_prefix: rawKey.substring(0, 15) + '...',
-      permissions: data.permissions,
-      is_active: true,
-      created_at: new Date().toISOString(),
-    };
-    setAgents([newAgent, ...agents]);
-    return { agent: newAgent, api_key: rawKey };
+    const res = await api.createAgent(data);
+    await fetchAgentsData();
+    return res;
   };
 
   const handleRevokeAgent = async (id: string) => {
-    setAgents(agents.filter((a) => a.id !== id));
+    try {
+      await api.revokeAgent(id);
+      await fetchAgentsData();
+    } catch (err: any) {
+      alert(`Revoke failed: ${err.message}`);
+    }
   };
 
   const handleApproveAction = async (approvalId: string) => {
-    setPendingApprovals(pendingApprovals.filter((a) => a.id !== approvalId));
-    alert('Action approved and executed by privileged host daemon.');
+    try {
+      await api.approveAction(approvalId);
+      await fetchApprovalsData();
+      await fetchProjectsData();
+      alert('Action approved and executed by privileged host daemon.');
+    } catch (err: any) {
+      alert(`Approval execution failed: ${err.message}`);
+    }
   };
 
   const handleRejectAction = async (approvalId: string) => {
-    setPendingApprovals(pendingApprovals.filter((a) => a.id !== approvalId));
-    alert('Action rejected.');
+    try {
+      await api.rejectAction(approvalId);
+      await fetchApprovalsData();
+      alert('Action rejected.');
+    } catch (err: any) {
+      alert(`Rejection failed: ${err.message}`);
+    }
   };
 
   const handleRestartService = async (name: string) => {
-    alert(`Service '${name}' restarted successfully.`);
+    try {
+      await api.restartService(name);
+      await fetchServicesData();
+      alert(`Service '${name}' restarted successfully.`);
+    } catch (err: any) {
+      alert(`Service restart failed: ${err.message}`);
+    }
   };
 
   const copyCLIText = () => {
@@ -343,7 +269,7 @@ export const App: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header
           overview={overview}
-          onRefresh={fetchMetrics}
+          onRefresh={refreshAll}
           isRefreshing={isRefreshing}
           onOpenCLIHint={() => setCliModalOpen(true)}
         />

@@ -22,13 +22,51 @@ class GithubController extends Controller
 
     public function repositories(): JsonResponse
     {
+        $token = env('GITHUB_TOKEN');
+        if ($token) {
+            try {
+                $response = \Illuminate\Support\Facades\Http::withToken($token)
+                    ->timeout(5)
+                    ->get('https://api.github.com/user/repos', [
+                        'per_page' => 30,
+                        'sort' => 'updated',
+                    ]);
+
+                if ($response->successful()) {
+                    $repos = collect($response->json())->map(function ($r) {
+                        return [
+                            'name' => $r['full_name'] ?? $r['name'],
+                            'private' => (bool) ($r['private'] ?? false),
+                            'default_branch' => $r['default_branch'] ?? 'main',
+                        ];
+                    })->all();
+
+                    return response()->json([
+                        'status' => 'success',
+                        'data' => $repos,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                // Non-blocking fallback
+            }
+        }
+
+        $projectRepos = Project::whereNotNull('repository_url')
+            ->get()
+            ->map(function ($p) {
+                return [
+                    'name' => $p->name,
+                    'private' => false,
+                    'default_branch' => $p->branch ?: 'main',
+                    'url' => $p->repository_url,
+                ];
+            })
+            ->values()
+            ->all();
+
         return response()->json([
             'status' => 'success',
-            'data' => [
-                ['name' => 'kodepreneur/landing-page', 'private' => false, 'default_branch' => 'main'],
-                ['name' => 'kodepreneur/api-service', 'private' => true, 'default_branch' => 'main'],
-                ['name' => 'kodepreneur/saas-dashboard', 'private' => true, 'default_branch' => 'main'],
-            ],
+            'data' => $projectRepos,
         ]);
     }
 

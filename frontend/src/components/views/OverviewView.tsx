@@ -6,7 +6,6 @@ import {
   Layers,
   ArrowUpRight,
   ShieldCheck,
-  CheckCircle2,
   Clock,
   Plus,
 } from 'lucide-react';
@@ -29,14 +28,14 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onDeployProject,
   onSelectTab,
 }) => {
-  const cpuUsage = overview?.cpu.usage_percent || 18.5;
-  const memUsedGB = overview ? (overview.memory.used_bytes / (1024 * 1024 * 1024)).toFixed(1) : '3.2';
-  const memTotalGB = overview ? (overview.memory.total_bytes / (1024 * 1024 * 1024)).toFixed(1) : '8.0';
-  const memUsagePct = overview?.memory.usage_percent || 40.0;
-  const disk = overview?.disks[0];
-  const diskUsagePct = disk?.usage_percent || 20.0;
-  const diskUsedGB = disk ? (disk.used_bytes / (1024 * 1024 * 1024)).toFixed(1) : '21.5';
-  const diskTotalGB = disk ? (disk.total_bytes / (1024 * 1024 * 1024)).toFixed(1) : '100.0';
+  const cpuUsage = overview?.cpu?.usage_percent ?? 0;
+  const memUsedGB = overview?.memory ? (overview.memory.used_bytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
+  const memTotalGB = overview?.memory ? (overview.memory.total_bytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
+  const memUsagePct = overview?.memory?.usage_percent ?? 0;
+  const disk = overview?.disks?.[0];
+  const diskUsagePct = disk?.usage_percent ?? 0;
+  const diskUsedGB = disk ? (disk.used_bytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
+  const diskTotalGB = disk ? (disk.total_bytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
 
   const sslCount = projects.filter((p) => p.ssl_enabled).length;
 
@@ -75,11 +74,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <span className="flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-slate-400" /> CPU Usage
             </span>
-            <span className="font-mono text-slate-400">{overview?.cpu.cores || 4} cores</span>
+            <span className="font-mono text-slate-400">{overview?.cpu?.cores ?? '--'} cores</span>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-bold font-mono text-slate-900">{cpuUsage.toFixed(1)}%</span>
-            <span className="text-xs text-slate-400 font-mono">load: {overview?.load_avg[0].toFixed(2) || '0.42'}</span>
+            <span className="text-2xl font-bold font-mono text-slate-900">{overview?.cpu ? cpuUsage.toFixed(1) + '%' : '--'}</span>
+            <span className="text-xs text-slate-400 font-mono">load: {overview?.load_avg?.[0] != null ? overview.load_avg[0].toFixed(2) : '--'}</span>
           </div>
           <div className="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden">
             <div
@@ -241,17 +240,30 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             </div>
 
             <div className="mt-4 space-y-3">
-              {services.map((s) => (
-                <div key={s.name} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                    <span className="text-slate-800 font-medium">{s.display_name}</span>
+              {services.map((s) => {
+                const isActive = s.status === 'active' || s.running;
+                return (
+                  <div key={s.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          isActive ? 'bg-emerald-500' : 'bg-slate-300'
+                        }`}
+                      />
+                      <span className="text-slate-800 font-medium">{s.display_name}</span>
+                    </div>
+                    <span
+                      className={`font-mono px-2 py-0.5 rounded text-[10px] uppercase font-semibold border ${
+                        isActive
+                          ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                          : 'text-slate-500 bg-slate-100 border-slate-200'
+                      }`}
+                    >
+                      {s.status}
+                    </span>
                   </div>
-                  <span className="font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[10px] border border-emerald-200 uppercase font-semibold">
-                    {s.status}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

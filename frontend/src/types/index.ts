@@ -51,6 +51,12 @@ export interface ProjectItem {
   upstream_port?: number;
   status: 'active' | 'building' | 'error';
   ssl_enabled: boolean;
+  ssl_certificate?: {
+    id?: string;
+    issuer?: string;
+    expires_at?: string;
+    status?: string;
+  };
   releases?: ReleaseItem[];
   created_at: string;
 }

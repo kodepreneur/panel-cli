@@ -24,6 +24,10 @@ func handleProject(cfg Config, args []string) {
 		baseDir := "/var/www/vps-panel/projects"
 		if envDir := os.Getenv("VPSD_PROJECTS_DIR"); envDir != "" {
 			baseDir = envDir
+		} else if _, err := os.Stat(baseDir); err != nil {
+			if _, err2 := os.Stat("storage/projects"); err2 == nil {
+				baseDir = "storage/projects"
+			}
 		}
 
 		entries, err := os.ReadDir(baseDir)

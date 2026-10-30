@@ -39,25 +39,63 @@ func (m *Manager) GetStatus(services []string) ([]protocol.ServiceStatus, error)
 			DisplayName: formatDisplayName(name),
 		}
 
-		if m.mockMode || m.systemctlBinary == "" {
-			status.Active = true
-			status.Running = true
-			status.Status = "active"
+		if m.systemctlBinary != "" && !m.mockMode {
+			cmd := exec.Command(m.systemctlBinary, "is-active", name)
+			out, _ := cmd.Output()
+			state := strings.TrimSpace(string(out))
+			status.Status = state
+			status.Active = (state == "active")
+			status.Running = (state == "active")
 			results = append(results, status)
 			continue
 		}
 
-		cmd := exec.Command(m.systemctlBinary, "is-active", name)
-		out, _ := cmd.Output()
-		state := strings.TrimSpace(string(out))
-		status.Status = state
-		status.Active = (state == "active")
-		status.Running = (state == "active")
+		// Real process / service inspection fallback
+		isRunning := checkProcessRunning(name)
+		if isRunning {
+			status.Active = true
+			status.Running = true
+			status.Status = "active"
+		} else {
+			status.Active = false
+			status.Running = false
+			status.Status = "inactive"
+		}
 
 		results = append(results, status)
 	}
 
 	return results, nil
+}
+
+func checkProcessRunning(name string) bool {
+	switch name {
+	case "nginx":
+		return runPgrep("nginx")
+	case "php8.4-fpm", "php8.3-fpm", "php-fpm":
+		return runPgrep("php-fpm")
+	case "mysql", "mariadb":
+		return runPgrep("mysqld") || runPgrep("mariadbd")
+	case "redis", "redis-server":
+		return runPgrep("redis-server")
+	case "docker":
+		return runPgrep("dockerd") || runPgrep("Docker")
+	case "ufw":
+		out, err := exec.Command("ufw", "status").CombinedOutput()
+		if err == nil && strings.Contains(string(out), "active") {
+			return true
+		}
+		pfOut, errPf := exec.Command("/sbin/pfctl", "-s", "info").CombinedOutput()
+		return errPf == nil && strings.Contains(string(pfOut), "Status: Enabled")
+	default:
+		return runPgrep(name)
+	}
+}
+
+func runPgrep(pattern string) bool {
+	cmd := exec.Command("pgrep", "-f", pattern)
+	err := cmd.Run()
+	return err == nil
 }
 
 // Action executes start/stop/restart/reload on a service

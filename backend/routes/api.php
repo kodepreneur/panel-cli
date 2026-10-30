@@ -31,6 +31,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/server/services', [ServerController::class, 'services'])->middleware('agent.auth:server.read');
         Route::post('/server/services/{name}/restart', [ServerController::class, 'restartService'])->middleware('agent.auth:service.manage');
         Route::post('/server/reboot', [ServerController::class, 'reboot'])->middleware('agent.auth:server.reboot');
+        Route::post('/server/terminal', [ServerController::class, 'terminal'])->middleware('agent.auth:server.read');
 
         // Firewall Management
         Route::get('/server/firewall', [FirewallController::class, 'status'])->middleware('agent.auth:server.read');

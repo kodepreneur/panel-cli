@@ -32,56 +32,50 @@ func NewManager() *Manager {
 var ufwRuleRegex = regexp.MustCompile(`^\[\s*(\d+)\]\s+([^\s]+)\s+([A-Z]+)\s+IN\s+([^\s]+)`)
 
 func (m *Manager) GetStatus() (*protocol.FirewallStatusResult, error) {
-	if m.mockMode || m.ufwBinary == "" {
-		return &protocol.FirewallStatusResult{
-			Enabled:         true,
-			DefaultIncoming: "deny",
-			Rules: []protocol.FirewallRule{
-				{Number: 1, Port: "22/tcp", Proto: "tcp", Action: "ALLOW", From: "Anywhere"},
-				{Number: 2, Port: "80/tcp", Proto: "tcp", Action: "ALLOW", From: "Anywhere"},
-				{Number: 3, Port: "443/tcp", Proto: "tcp", Action: "ALLOW", From: "Anywhere"},
-			},
-		}, nil
-	}
-
-	cmd := exec.Command(m.ufwBinary, "status", "numbered")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("failed to query ufw: %s (%w)", string(out), err)
-	}
-
-	result := &protocol.FirewallStatusResult{
-		Rules: []protocol.FirewallRule{},
-	}
-
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, "Status: active") {
-			result.Enabled = true
-		}
-
-		matches := ufwRuleRegex.FindStringSubmatch(line)
-		if len(matches) == 5 {
-			num, _ := strconv.Atoi(matches[1])
-			proto := "any"
-			if strings.Contains(matches[2], "/tcp") {
-				proto = "tcp"
-			} else if strings.Contains(matches[2], "/udp") {
-				proto = "udp"
+	if m.ufwBinary != "" && !m.mockMode {
+		cmd := exec.Command(m.ufwBinary, "status", "numbered")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			result := &protocol.FirewallStatusResult{
+				Rules: []protocol.FirewallRule{},
 			}
-
-			result.Rules = append(result.Rules, protocol.FirewallRule{
-				Number: num,
-				Port:   matches[2],
-				Proto:  proto,
-				Action: matches[3],
-				From:   matches[4],
-			})
+			scanner := bufio.NewScanner(strings.NewReader(string(out)))
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if strings.HasPrefix(line, "Status: active") {
+					result.Enabled = true
+				}
+				matches := ufwRuleRegex.FindStringSubmatch(line)
+				if len(matches) == 5 {
+					num, _ := strconv.Atoi(matches[1])
+					proto := "any"
+					if strings.Contains(matches[2], "/tcp") {
+						proto = "tcp"
+					} else if strings.Contains(matches[2], "/udp") {
+						proto = "udp"
+					}
+					result.Rules = append(result.Rules, protocol.FirewallRule{
+						Number: num,
+						Port:   matches[2],
+						Proto:  proto,
+						Action: matches[3],
+						From:   matches[4],
+					})
+				}
+			}
+			return result, nil
 		}
 	}
 
-	return result, nil
+	// Check pfctl on macOS / BSD
+	pfOut, pfErr := exec.Command("/sbin/pfctl", "-s", "info").CombinedOutput()
+	pfEnabled := pfErr == nil && strings.Contains(string(pfOut), "Status: Enabled")
+
+	return &protocol.FirewallStatusResult{
+		Enabled:         pfEnabled,
+		DefaultIncoming: "deny",
+		Rules:           []protocol.FirewallRule{},
+	}, nil
 }
 
 func (m *Manager) AddRule(req protocol.AddFirewallRuleRequest) (bool, error) {

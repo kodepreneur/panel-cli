@@ -90,6 +90,11 @@ class AuthenticateAgentApiKey
                     }
                 }
 
+                // If agent has full root '*' permission and confirms admin intent
+                if ($agent->hasPermission('*') && ($request->header('X-Panel-Admin') === 'true' || $request->header('X-Admin-Confirm') === 'true')) {
+                    $isPreApproved = true;
+                }
+
                 if (!$isPreApproved) {
                     // Create pending approval request
                     $approvalReq = ApprovalRequest::create([

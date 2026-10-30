@@ -66,12 +66,28 @@ export const DomainsView: React.FC<DomainsViewProps> = ({ projects, onInstallSSL
                       </td>
                       <td className="px-5 py-3.5 text-slate-600">{project.name}</td>
                       <td className="px-5 py-3.5 text-slate-600">
-                        {project.ssl_enabled ? "Let's Encrypt Authority" : 'None'}
+                        {project.ssl_enabled
+                          ? (project.ssl_certificate?.issuer || "Let's Encrypt Authority")
+                          : 'None'}
                       </td>
                       <td className="px-5 py-3.5">
                         {project.ssl_enabled ? (
                           <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] font-medium border border-emerald-200">
-                            <CheckCircle2 className="w-3 h-3" /> Valid (89 days left)
+                            <CheckCircle2 className="w-3 h-3" />
+                            {project.ssl_certificate?.expires_at ? (
+                              (() => {
+                                const diffDays = Math.max(
+                                  0,
+                                  Math.round(
+                                    (new Date(project.ssl_certificate.expires_at).getTime() - Date.now()) /
+                                      (1000 * 60 * 60 * 24)
+                                  )
+                                );
+                                return `Valid (${diffDays} days left)`;
+                              })()
+                            ) : (
+                              'Valid (Active)'
+                            )}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px] font-medium border border-amber-200">
