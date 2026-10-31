@@ -28,14 +28,19 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onDeployProject,
   onSelectTab,
 }) => {
-  const cpuUsage = overview?.cpu?.usage_percent ?? 0;
-  const memUsedGB = overview?.memory ? (overview.memory.used_bytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
-  const memTotalGB = overview?.memory ? (overview.memory.total_bytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
-  const memUsagePct = overview?.memory?.usage_percent ?? 0;
+  const cpuUsage = Number(overview?.cpu?.usage_percent ?? 0);
+  const memTotalBytes = Number(overview?.memory?.total_bytes ?? 0);
+  const memUsedBytes = Number(overview?.memory?.used_bytes ?? 0);
+  const memUsedGB = memTotalBytes > 0 ? (memUsedBytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
+  const memTotalGB = memTotalBytes > 0 ? (memTotalBytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
+  const memUsagePct = Number(overview?.memory?.usage_percent ?? 0);
+
   const disk = overview?.disks?.[0];
-  const diskUsagePct = disk?.usage_percent ?? 0;
-  const diskUsedGB = disk ? (disk.used_bytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
-  const diskTotalGB = disk ? (disk.total_bytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
+  const diskTotalBytes = Number(disk?.total_bytes ?? 0);
+  const diskUsedBytes = Number(disk?.used_bytes ?? 0);
+  const diskUsagePct = Number(disk?.usage_percent ?? 0);
+  const diskUsedGB = diskTotalBytes > 0 ? (diskUsedBytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
+  const diskTotalGB = diskTotalBytes > 0 ? (diskTotalBytes / (1024 * 1024 * 1024)).toFixed(1) : '0.0';
 
   const sslCount = projects.filter((p) => p.ssl_enabled).length;
 
@@ -78,7 +83,9 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <span className="text-2xl font-bold font-mono text-slate-900">{overview?.cpu ? cpuUsage.toFixed(1) + '%' : '--'}</span>
-            <span className="text-xs text-slate-400 font-mono">load: {overview?.load_avg?.[0] != null ? overview.load_avg[0].toFixed(2) : '--'}</span>
+            <span className="text-xs text-slate-400 font-mono">
+              load: {overview?.load_avg && overview.load_avg[0] != null && !isNaN(Number(overview.load_avg[0])) ? Number(overview.load_avg[0]).toFixed(2) : '--'}
+            </span>
           </div>
           <div className="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden">
             <div

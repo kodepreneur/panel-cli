@@ -9,6 +9,7 @@ import { DeploymentsView } from './components/views/DeploymentsView';
 import { ServicesView } from './components/views/ServicesView';
 import { TerminalView } from './components/views/TerminalView';
 import { GitHubView } from './components/views/GitHubView';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import {
   ServerOverview,
   ProjectItem,
@@ -333,82 +334,84 @@ export const App: React.FC = () => {
         />
 
         <main className="flex-1 overflow-y-auto p-8">
-          {currentTab === 'overview' && (
-            <OverviewView
-              overview={overview}
-              projects={projects}
-              services={services}
-              onAddProject={() => setCurrentTab('projects')}
-              onDeployProject={handleDeploy}
-              onSelectTab={setCurrentTab}
-            />
-          )}
+          <ErrorBoundary fallbackTitle="View Rendering Error">
+            {currentTab === 'overview' && (
+              <OverviewView
+                overview={overview}
+                projects={projects}
+                services={services}
+                onAddProject={() => setCurrentTab('projects')}
+                onDeployProject={handleDeploy}
+                onSelectTab={setCurrentTab}
+              />
+            )}
 
-          {currentTab === 'projects' && (
-            <ProjectsView
-              projects={projects}
-              onCreateProject={handleCreateProject}
-              onDeploy={handleDeploy}
-              onUpdateFromRepo={handleUpdateFromRepo}
-              onRollback={handleRollback}
-              onDelete={handleDeleteProject}
-              onViewLogs={() => setCurrentTab('deployments')}
-            />
-          )}
+            {currentTab === 'projects' && (
+              <ProjectsView
+                projects={projects}
+                onCreateProject={handleCreateProject}
+                onDeploy={handleDeploy}
+                onUpdateFromRepo={handleUpdateFromRepo}
+                onRollback={handleRollback}
+                onDelete={handleDeleteProject}
+                onViewLogs={() => setCurrentTab('deployments')}
+              />
+            )}
 
-          {currentTab === 'domains' && (
-            <DomainsView projects={projects} onInstallSSL={handleInstallSSL} />
-          )}
+            {currentTab === 'domains' && (
+              <DomainsView projects={projects} onInstallSSL={handleInstallSSL} />
+            )}
 
-          {currentTab === 'github' && (
-            <GitHubView
-              projects={projects}
-              onUpdateFromRepo={handleUpdateFromRepo}
-              onViewLogs={() => setCurrentTab('deployments')}
-            />
-          )}
+            {currentTab === 'github' && (
+              <GitHubView
+                projects={projects}
+                onUpdateFromRepo={handleUpdateFromRepo}
+                onViewLogs={() => setCurrentTab('deployments')}
+              />
+            )}
 
 
-          {currentTab === 'agents' && (
-            <AIAgentsView
-              agents={agents}
-              pendingApprovals={pendingApprovals}
-              onCreateAgent={handleCreateAgent}
-              onRevokeAgent={handleRevokeAgent}
-              onApproveAction={handleApproveAction}
-              onRejectAction={handleRejectAction}
-            />
-          )}
+            {currentTab === 'agents' && (
+              <AIAgentsView
+                agents={agents}
+                pendingApprovals={pendingApprovals}
+                onCreateAgent={handleCreateAgent}
+                onRevokeAgent={handleRevokeAgent}
+                onApproveAction={handleApproveAction}
+                onRejectAction={handleRejectAction}
+              />
+            )}
 
-          {currentTab === 'deployments' && (
-            <DeploymentsView
-              deployments={deployments}
-              selectedLogs={null}
-            />
-          )}
+            {currentTab === 'deployments' && (
+              <DeploymentsView
+                deployments={deployments}
+                selectedLogs={null}
+              />
+            )}
 
-          {currentTab === 'services' && (
-            <ServicesView
-              services={services}
-              onRestartService={handleRestartService}
-            />
-          )}
+            {currentTab === 'services' && (
+              <ServicesView
+                services={services}
+                onRestartService={handleRestartService}
+              />
+            )}
 
-          {currentTab === 'terminal' && <TerminalView />}
+            {currentTab === 'terminal' && <TerminalView />}
 
-          {(currentTab === 'databases' ||
-            currentTab === 'backups' ||
-            currentTab === 'activity' ||
-            currentTab === 'settings') && (
-            <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
-              <h2 className="text-base font-semibold text-slate-800 capitalize mb-2">
-                {currentTab} Management
-              </h2>
-              <p className="text-xs max-w-md mx-auto text-slate-500">
-                Full programmatic control available via REST API and the <code>vpsctl {currentTab}</code> CLI command.
-              </p>
-            </div>
-          )}
+            {(currentTab === 'databases' ||
+              currentTab === 'backups' ||
+              currentTab === 'activity' ||
+              currentTab === 'settings') && (
+              <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
+                <h2 className="text-base font-semibold text-slate-800 capitalize mb-2">
+                  {currentTab} Management
+                </h2>
+                <p className="text-xs max-w-md mx-auto text-slate-500">
+                  Full programmatic control available via REST API and the <code>vpsctl {currentTab}</code> CLI command.
+                </p>
+              </div>
+            )}
+          </ErrorBoundary>
         </main>
       </div>
 

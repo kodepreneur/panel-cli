@@ -23,14 +23,14 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2 text-sm text-slate-700 font-medium">
           <Server className="w-4 h-4 text-slate-400" />
           <span className="font-semibold text-slate-900">
-            {overview?.os.hostname || 'vps-server.local'}
+            {overview?.os?.hostname || 'vps-server.local'}
           </span>
           <span className="text-slate-300">|</span>
           <span className="text-slate-500 font-normal">
-            {overview?.os.version || 'Ubuntu 24.04 LTS'}
+            {overview?.os?.version || 'Ubuntu 24.04 LTS'}
           </span>
           <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono">
-            {overview?.os.arch || 'x86_64'}
+            {overview?.os?.arch || 'x86_64'}
           </span>
         </div>
       </div>

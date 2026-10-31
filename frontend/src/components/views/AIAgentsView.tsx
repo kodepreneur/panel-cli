@@ -216,7 +216,7 @@ export const AIAgentsView: React.FC<AIAgentsViewProps> = ({
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex flex-wrap gap-1 max-w-xs">
-                        {agent.permissions.slice(0, 3).map((perm) => (
+                        {(agent.permissions || []).slice(0, 3).map((perm) => (
                           <span
                             key={perm}
                             className="text-[10px] font-mono bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200"
@@ -224,9 +224,9 @@ export const AIAgentsView: React.FC<AIAgentsViewProps> = ({
                             {perm}
                           </span>
                         ))}
-                        {agent.permissions.length > 3 && (
+                        {(agent.permissions || []).length > 3 && (
                           <span className="text-[10px] font-mono text-slate-500">
-                            +{agent.permissions.length - 3} more
+                            +{(agent.permissions || []).length - 3} more
                           </span>
                         )}
                       </div>

@@ -39,10 +39,19 @@ class ServerController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => [
+                'uptime_seconds' => $overview['uptime_seconds'] ?? 0,
+                'os' => $overview['os'] ?? [
+                    'name' => PHP_OS_FAMILY,
+                    'version' => PHP_OS_FAMILY,
+                    'kernel' => php_uname('r'),
+                    'arch' => php_uname('m'),
+                    'hostname' => gethostname(),
+                ],
                 'cpu' => $overview['cpu'] ?? [],
                 'memory' => $overview['memory'] ?? [],
                 'disks' => $overview['disks'] ?? [],
                 'network' => $overview['network'] ?? [],
+                'load_avg' => $overview['load_avg'] ?? [0, 0, 0],
                 'load' => $overview['load_avg'] ?? [0, 0, 0],
                 'timestamp' => $overview['timestamp'] ?? now()->toIso8601String(),
             ],
